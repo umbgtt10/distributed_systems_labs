@@ -7,6 +7,7 @@ use tokio_util::sync::CancellationToken;
 use crate::worker::Worker;
 
 /// Reducer assignment - which keys this reducer is responsible for
+#[derive(Clone)]
 pub struct ReducerAssignment {
     pub keys: Vec<String>,
 }

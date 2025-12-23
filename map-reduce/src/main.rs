@@ -2,6 +2,8 @@ mod config;
 mod mapper;
 mod orchestrator;
 mod reducer;
+mod task_work_distributor;
+mod work_distributor;
 mod worker;
 
 use config::{Config, generate_random_string, generate_target_word};
@@ -11,6 +13,7 @@ use reducer::Reducer;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+use task_work_distributor::TaskWorkDistributor;
 
 #[tokio::main]
 async fn main() {
@@ -96,8 +99,12 @@ async fn main() {
         reducers.push(reducer);
     }
 
-    // Create orchestrator with the worker pools
-    let orchestrator: Orchestrator<Mapper, Reducer> = Orchestrator::new(mappers, reducers);
+    // Create work distributors
+    let mapper_distributor = TaskWorkDistributor::<Mapper>::new();
+    let reducer_distributor = TaskWorkDistributor::<Reducer>::new();
+
+    // Create orchestrator with the distributors
+    let orchestrator = Orchestrator::new(mapper_distributor, reducer_distributor);
 
     // Setup Ctrl+C handler
     let ctrl_c_token = cancel_token.clone();
@@ -111,7 +118,13 @@ async fn main() {
 
     // Run the orchestrator
     orchestrator
-        .run(data_chunks, targets, config.keys_per_reducer)
+        .run(
+            mappers,
+            reducers,
+            data_chunks,
+            targets,
+            config.keys_per_reducer,
+        )
         .await;
 
     // Extract final results

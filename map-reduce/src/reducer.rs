@@ -84,7 +84,7 @@ impl Reducer {
     }
 
     /// Sends a work assignment to the reducer
-    pub fn reduce_assignment(
+    pub fn send_reduce_assignment(
         &self,
         assignment: ReducerAssignment,
         complete_tx: mpsc::Sender<usize>,

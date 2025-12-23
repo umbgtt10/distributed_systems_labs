@@ -46,7 +46,7 @@ impl Orchestrator {
                     targets: targets.clone(),
                 };
                 let tx = complete_tx.clone();
-                mapper.map_assignment(assignment, tx);
+                mapper.send_map_assignment(assignment, tx);
                 chunk_index += 1;
                 active_mappers += 1;
             }
@@ -65,7 +65,7 @@ impl Orchestrator {
                         targets: targets.clone(),
                     };
                     let tx = complete_tx.clone();
-                    self.mappers[mapper_id].map_assignment(assignment, tx);
+                    self.mappers[mapper_id].send_map_assignment(assignment, tx);
                     chunk_index += 1;
                     active_mappers += 1;
                 }
@@ -117,7 +117,7 @@ impl Orchestrator {
                     keys: key_partitions[partition_index].clone(),
                 };
                 let tx = reduce_complete_tx.clone();
-                reducer.reduce_assignment(assignment, tx);
+                reducer.send_reduce_assignment(assignment, tx);
                 partition_index += 1;
                 active_reducers += 1;
             }
@@ -134,7 +134,7 @@ impl Orchestrator {
                         keys: key_partitions[partition_index].clone(),
                     };
                     let tx = reduce_complete_tx.clone();
-                    self.reducers[reducer_id].reduce_assignment(assignment, tx);
+                    self.reducers[reducer_id].send_reduce_assignment(assignment, tx);
                     partition_index += 1;
                     active_reducers += 1;
                 }

@@ -1,0 +1,5 @@
+[workspace]
+members = [
+    "map-reduce"
+]
+resolver = "2"

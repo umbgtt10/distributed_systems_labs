@@ -1,3 +1,5 @@
+mod channel_completion_signaling;
+mod completion_signaling;
 mod config;
 mod mapper;
 mod orchestrator;
@@ -6,6 +8,7 @@ mod task_work_distributor;
 mod work_distributor;
 mod worker;
 
+use channel_completion_signaling::ChannelCompletionSignaling;
 use config::{Config, generate_random_string, generate_target_word};
 use mapper::Mapper;
 use orchestrator::Orchestrator;
@@ -100,8 +103,8 @@ async fn main() {
     }
 
     // Create work distributors
-    let mapper_distributor = TaskWorkDistributor::<Mapper>::new();
-    let reducer_distributor = TaskWorkDistributor::<Reducer>::new();
+    let mapper_distributor = TaskWorkDistributor::<Mapper, ChannelCompletionSignaling>::new();
+    let reducer_distributor = TaskWorkDistributor::<Reducer, ChannelCompletionSignaling>::new();
 
     // Create orchestrator with the distributors
     let orchestrator = Orchestrator::new(mapper_distributor, reducer_distributor);

@@ -34,7 +34,7 @@ async fn main() {
     println!("  - Reducers: {}", config.num_reducers);
     println!("\nGenerating data...");
 
-    let mut rng = rand::thread_rng();
+    let mut rng = rand::rng();
 
     // Generate random strings
     let data: Vec<String> = (0..config.num_strings)
@@ -75,9 +75,25 @@ async fn main() {
     );
     println!("\nStarting MapReduce...");
 
-    // Create orchestrator and run
-    let mut orchestrator = Orchestrator::new(config.num_mappers, config.num_reducers);
-    let cancel_token = orchestrator.cancellation_token();
+    // Create cancellation token
+    let cancel_token = tokio_util::sync::CancellationToken::new();
+
+    // Create mapper pool
+    let mut mappers = Vec::new();
+    for mapper_id in 0..config.num_mappers {
+        let mapper = mapper::Mapper::new(mapper_id, shared_map.clone(), cancel_token.clone());
+        mappers.push(mapper);
+    }
+
+    // Create reducer pool
+    let mut reducers = Vec::new();
+    for reducer_id in 0..config.num_reducers {
+        let reducer = reducer::Reducer::new(reducer_id, shared_map.clone(), cancel_token.clone());
+        reducers.push(reducer);
+    }
+
+    // Create orchestrator with the worker pools
+    let orchestrator = Orchestrator::new(mappers, reducers);
 
     // Setup Ctrl+C handler
     let ctrl_c_token = cancel_token.clone();
@@ -90,9 +106,7 @@ async fn main() {
     });
 
     // Run the orchestrator
-    orchestrator
-        .run(data_chunks, targets, shared_map.clone())
-        .await;
+    orchestrator.run(data_chunks, targets).await;
 
     // Extract final results
     let final_results = shared_map.lock().unwrap();

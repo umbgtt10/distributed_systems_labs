@@ -1,38 +1,20 @@
 use crate::mapper::{Mapper, WorkAssignment};
 use crate::reducer::{Reducer, ReducerAssignment};
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc;
-use tokio_util::sync::CancellationToken;
 
 /// Orchestrator coordinates the map-reduce workflow
 pub struct Orchestrator {
-    cancellation_token: CancellationToken,
-    num_mappers: usize,
-    num_reducers: usize,
+    mappers: Vec<Mapper>,
+    reducers: Vec<Reducer>,
 }
 
 impl Orchestrator {
-    pub fn new(num_mappers: usize, num_reducers: usize) -> Self {
-        Self {
-            cancellation_token: CancellationToken::new(),
-            num_mappers,
-            num_reducers,
-        }
-    }
-
-    /// Returns a clone of the cancellation token for external control
-    pub fn cancellation_token(&self) -> CancellationToken {
-        self.cancellation_token.clone()
+    pub fn new(mappers: Vec<Mapper>, reducers: Vec<Reducer>) -> Self {
+        Self { mappers, reducers }
     }
 
     /// Runs the complete map-reduce workflow
-    pub async fn run(
-        &mut self,
-        data_chunks: Vec<Vec<String>>,
-        targets: Vec<String>,
-        shared_map: Arc<Mutex<HashMap<String, Vec<i32>>>>,
-    ) {
+    pub async fn run(self, data_chunks: Vec<Vec<String>>, targets: Vec<String>) {
         println!("=== ORCHESTRATOR STARTED ===");
 
         // MAP PHASE - Distribute work to mappers
@@ -40,29 +22,18 @@ impl Orchestrator {
         println!(
             "Distributing {} chunks to {} mappers...",
             data_chunks.len(),
-            self.num_mappers
+            self.mappers.len()
         );
 
         // Create completion channel
-        let (complete_tx, mut complete_rx) = mpsc::channel::<usize>(self.num_mappers);
-
-        // Create mapper pool
-        let mut mappers: Vec<Mapper> = Vec::new();
-        for mapper_id in 0..self.num_mappers {
-            let mapper = Mapper::new(
-                mapper_id,
-                shared_map.clone(),
-                self.cancellation_token.clone(),
-            );
-            mappers.push(mapper);
-        }
+        let (complete_tx, mut complete_rx) = mpsc::channel::<usize>(self.mappers.len());
 
         // Track which chunks have been assigned and which mappers are available
         let mut chunk_index = 0;
         let mut active_mappers = 0;
 
         // Assign initial work to all mappers
-        for mapper in mappers.iter_mut() {
+        for mapper in self.mappers.iter() {
             if chunk_index < data_chunks.len() {
                 let assignment = WorkAssignment {
                     chunk_id: chunk_index,
@@ -70,7 +41,7 @@ impl Orchestrator {
                     targets: targets.clone(),
                 };
                 let tx = complete_tx.clone();
-                mapper.process_chunk(assignment, tx);
+                mapper.map_assignment(assignment, tx);
                 chunk_index += 1;
                 active_mappers += 1;
             }
@@ -89,7 +60,7 @@ impl Orchestrator {
                         targets: targets.clone(),
                     };
                     let tx = complete_tx.clone();
-                    mappers[mapper_id].process_chunk(assignment, tx);
+                    self.mappers[mapper_id].map_assignment(assignment, tx);
                     chunk_index += 1;
                     active_mappers += 1;
                 }
@@ -98,7 +69,7 @@ impl Orchestrator {
 
         // Wait for all mappers to fully shut down
         println!("Waiting for all mappers to complete...");
-        for (idx, mapper) in mappers.into_iter().enumerate() {
+        for (idx, mapper) in self.mappers.into_iter().enumerate() {
             if let Err(e) = mapper.wait().await {
                 eprintln!("Mapper {} task failed: {}", idx, e);
             }
@@ -107,15 +78,18 @@ impl Orchestrator {
 
         // REDUCE PHASE - Assign work to reducers
         println!("\n=== REDUCE PHASE ===");
-        println!("Starting {} reducers...", self.num_reducers);
+        println!("Starting {} reducers...", self.reducers.len());
 
-        let keys_per_reducer = targets.len() / self.num_reducers;
-        let mut reducers: Vec<Reducer> = Vec::new();
+        let keys_per_reducer = targets.len() / self.reducers.len();
+
+        // Create completion channel for reducers
+        let (reduce_complete_tx, mut reduce_complete_rx) =
+            mpsc::channel::<usize>(self.reducers.len());
 
         // Partition the keys among reducers
-        for reducer_id in 0..self.num_reducers {
+        for (reducer_id, reducer) in self.reducers.iter().enumerate() {
             let start = reducer_id * keys_per_reducer;
-            let end = if reducer_id == self.num_reducers - 1 {
+            let end = if reducer_id == self.reducers.len() - 1 {
                 targets.len()
             } else {
                 (reducer_id + 1) * keys_per_reducer
@@ -126,18 +100,21 @@ impl Orchestrator {
                 keys: assigned_keys,
             };
 
-            let reducer = Reducer::new(
-                reducer_id,
-                shared_map.clone(),
-                self.cancellation_token.clone(),
-            );
-            reducer.start(assignment);
-            reducers.push(reducer);
+            reducer.reduce_assignment(assignment, reduce_complete_tx.clone());
         }
 
-        // Wait for all reducers to complete
+        // Wait for all reducers to signal completion
+        drop(reduce_complete_tx);
+        let mut completed_reducers = 0;
+        while completed_reducers < self.reducers.len() {
+            if let Some(_reducer_id) = reduce_complete_rx.recv().await {
+                completed_reducers += 1;
+            }
+        }
+
+        // Wait for all reducers to fully shut down
         println!("Waiting for all reducers to complete...");
-        for (idx, reducer) in reducers.into_iter().enumerate() {
+        for (idx, reducer) in self.reducers.into_iter().enumerate() {
             if let Err(e) = reducer.wait().await {
                 eprintln!("Reducer {} task failed: {}", idx, e);
             }

@@ -35,7 +35,7 @@ impl Mapper {
     }
 
     /// Sends a work assignment to the mapper
-    pub fn process_chunk(&self, assignment: WorkAssignment, complete_tx: mpsc::Sender<usize>) {
+    pub fn map_assignment(&self, assignment: WorkAssignment, complete_tx: mpsc::Sender<usize>) {
         // Send work to the mapper task
         let _ = self.work_tx.try_send((assignment, complete_tx));
     }

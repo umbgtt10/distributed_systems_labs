@@ -35,10 +35,10 @@ impl Config {
 
 /// Generate a random string of up to max_len characters
 pub fn generate_random_string(rng: &mut impl Rng, max_len: usize) -> String {
-    let len = rng.gen_range(1..=max_len);
+    let len = rng.random_range(1..=max_len);
     (0..len)
         .map(|_| {
-            let idx = rng.gen_range(0..26);
+            let idx = rng.random_range(0..26);
             (b'a' + idx) as char
         })
         .collect()
@@ -48,7 +48,7 @@ pub fn generate_random_string(rng: &mut impl Rng, max_len: usize) -> String {
 pub fn generate_target_word(rng: &mut impl Rng, length: usize) -> String {
     (0..length)
         .map(|_| {
-            let idx = rng.gen_range(0..26);
+            let idx = rng.random_range(0..26);
             (b'a' + idx) as char
         })
         .collect()

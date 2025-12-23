@@ -11,7 +11,7 @@ pub struct ReducerAssignment {
 
 /// Reducer worker that sums up vectors into final counts
 pub struct Reducer {
-    work_tx: mpsc::Sender<ReducerAssignment>,
+    work_tx: mpsc::Sender<(ReducerAssignment, mpsc::Sender<usize>)>,
     task_handle: JoinHandle<()>,
 }
 
@@ -21,7 +21,7 @@ impl Reducer {
         shared_map: Arc<Mutex<HashMap<String, Vec<i32>>>>,
         cancel_token: CancellationToken,
     ) -> Self {
-        let (work_tx, work_rx) = mpsc::channel::<ReducerAssignment>(10);
+        let (work_tx, work_rx) = mpsc::channel::<(ReducerAssignment, mpsc::Sender<usize>)>(10);
 
         let handle = tokio::spawn(Self::run_task(id, work_rx, shared_map, cancel_token));
 
@@ -33,7 +33,7 @@ impl Reducer {
 
     async fn run_task(
         id: usize,
-        mut work_rx: mpsc::Receiver<ReducerAssignment>,
+        mut work_rx: mpsc::Receiver<(ReducerAssignment, mpsc::Sender<usize>)>,
         shared_map: Arc<Mutex<HashMap<String, Vec<i32>>>>,
         cancel_token: CancellationToken,
     ) {
@@ -41,7 +41,7 @@ impl Reducer {
             tokio::select! {
                 work = work_rx.recv() => {
                     match work {
-                        Some(assignment) => {
+                        Some((assignment, complete_tx)) => {
                             if id.is_multiple_of(2) {
                                 println!("Reducer {} started for {} keys", id, assignment.keys.len());
                             }
@@ -65,6 +65,9 @@ impl Reducer {
                             if id.is_multiple_of(2) {
                                 println!("Reducer {} finished", id);
                             }
+
+                            // Notify orchestrator that this reducer is done
+                            let _ = complete_tx.send(id).await;
                         }
                         None => {
                             // Channel closed, exit
@@ -81,9 +84,13 @@ impl Reducer {
     }
 
     /// Sends a work assignment to the reducer
-    pub fn start(&self, assignment: ReducerAssignment) {
+    pub fn reduce_assignment(
+        &self,
+        assignment: ReducerAssignment,
+        complete_tx: mpsc::Sender<usize>,
+    ) {
         // Send work to the reducer task
-        let _ = self.work_tx.try_send(assignment);
+        let _ = self.work_tx.try_send((assignment, complete_tx));
     }
 
     /// Waits for the reducer task to complete

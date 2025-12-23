@@ -4,6 +4,7 @@
   "num_target_words": 50,
   "target_word_length": 4,
   "partition_size": 5000,
+  "keys_per_reducer": 10,
   "num_mappers": 50,
   "num_reducers": 5
 }

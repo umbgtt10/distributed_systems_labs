@@ -9,6 +9,7 @@ pub struct Config {
     pub num_target_words: usize,
     pub target_word_length: usize,
     pub partition_size: usize,
+    pub keys_per_reducer: usize,
     pub num_mappers: usize,
     pub num_reducers: usize,
 }
@@ -27,6 +28,7 @@ impl Config {
             num_target_words: 100,
             target_word_length: 3,
             partition_size: 10_000,
+            keys_per_reducer: 10,
             num_mappers: 100,
             num_reducers: 10,
         }

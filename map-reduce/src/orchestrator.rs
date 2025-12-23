@@ -14,7 +14,12 @@ impl Orchestrator {
     }
 
     /// Runs the complete map-reduce workflow
-    pub async fn run(self, data_chunks: Vec<Vec<String>>, targets: Vec<String>) {
+    pub async fn run(
+        self,
+        data_chunks: Vec<Vec<String>>,
+        targets: Vec<String>,
+        keys_per_reducer: usize,
+    ) {
         println!("=== ORCHESTRATOR STARTED ===");
 
         // MAP PHASE - Distribute work to mappers
@@ -80,35 +85,59 @@ impl Orchestrator {
         println!("\n=== REDUCE PHASE ===");
         println!("Starting {} reducers...", self.reducers.len());
 
-        let keys_per_reducer = targets.len() / self.reducers.len();
-
         // Create completion channel for reducers
         let (reduce_complete_tx, mut reduce_complete_rx) =
             mpsc::channel::<usize>(self.reducers.len());
 
-        // Partition the keys among reducers
-        for (reducer_id, reducer) in self.reducers.iter().enumerate() {
-            let start = reducer_id * keys_per_reducer;
-            let end = if reducer_id == self.reducers.len() - 1 {
-                targets.len()
-            } else {
-                (reducer_id + 1) * keys_per_reducer
-            };
+        // Partition the keys among reducers based on keys_per_reducer
+        let num_key_partitions = targets.len().div_ceil(keys_per_reducer);
 
-            let assigned_keys = targets[start..end].to_vec();
-            let assignment = ReducerAssignment {
-                keys: assigned_keys,
-            };
-
-            reducer.reduce_assignment(assignment, reduce_complete_tx.clone());
+        // Create all key partition assignments upfront
+        let mut key_partitions = Vec::new();
+        for partition_id in 0..num_key_partitions {
+            let start = partition_id * keys_per_reducer;
+            let end = std::cmp::min(start + keys_per_reducer, targets.len());
+            key_partitions.push(targets[start..end].to_vec());
         }
 
-        // Wait for all reducers to signal completion
-        drop(reduce_complete_tx);
-        let mut completed_reducers = 0;
-        while completed_reducers < self.reducers.len() {
-            if let Some(_reducer_id) = reduce_complete_rx.recv().await {
-                completed_reducers += 1;
+        println!(
+            "Distributing {} key partitions to {} reducers...",
+            key_partitions.len(),
+            self.reducers.len()
+        );
+
+        // Track which partitions have been assigned and which reducers are available
+        let mut partition_index = 0;
+        let mut active_reducers = 0;
+
+        // Assign initial work to all reducers
+        for reducer in self.reducers.iter() {
+            if partition_index < key_partitions.len() {
+                let assignment = ReducerAssignment {
+                    keys: key_partitions[partition_index].clone(),
+                };
+                let tx = reduce_complete_tx.clone();
+                reducer.reduce_assignment(assignment, tx);
+                partition_index += 1;
+                active_reducers += 1;
+            }
+        }
+
+        // As reducers complete, assign them more work
+        while active_reducers > 0 {
+            if let Some(reducer_id) = reduce_complete_rx.recv().await {
+                active_reducers -= 1;
+
+                // Assign next partition if available
+                if partition_index < key_partitions.len() {
+                    let assignment = ReducerAssignment {
+                        keys: key_partitions[partition_index].clone(),
+                    };
+                    let tx = reduce_complete_tx.clone();
+                    self.reducers[reducer_id].reduce_assignment(assignment, tx);
+                    partition_index += 1;
+                    active_reducers += 1;
+                }
             }
         }
 

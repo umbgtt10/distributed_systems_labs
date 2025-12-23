@@ -30,6 +30,7 @@ async fn main() {
     println!("  - Target words: {}", config.num_target_words);
     println!("  - Target word length: {}", config.target_word_length);
     println!("  - Partition size: {}", config.partition_size);
+    println!("  - Keys per reducer: {}", config.keys_per_reducer);
     println!("  - Mappers: {}", config.num_mappers);
     println!("  - Reducers: {}", config.num_reducers);
     println!("\nGenerating data...");
@@ -106,7 +107,9 @@ async fn main() {
     });
 
     // Run the orchestrator
-    orchestrator.run(data_chunks, targets).await;
+    orchestrator
+        .run(data_chunks, targets, config.keys_per_reducer)
+        .await;
 
     // Extract final results
     let final_results = shared_map.lock().unwrap();

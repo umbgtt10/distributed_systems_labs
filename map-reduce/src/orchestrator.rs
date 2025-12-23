@@ -1,15 +1,16 @@
-use crate::mapper::{Mapper, WorkAssignment};
-use crate::reducer::{Reducer, ReducerAssignment};
+use crate::mapper::WorkAssignment;
+use crate::reducer::ReducerAssignment;
+use crate::worker::Worker;
 use tokio::sync::mpsc;
 
 /// Orchestrator coordinates the map-reduce workflow
-pub struct Orchestrator {
-    mappers: Vec<Mapper>,
-    reducers: Vec<Reducer>,
+pub struct Orchestrator<M: Worker, R: Worker> {
+    mappers: Vec<M>,
+    reducers: Vec<R>,
 }
 
-impl Orchestrator {
-    pub fn new(mappers: Vec<Mapper>, reducers: Vec<Reducer>) -> Self {
+impl<M: Worker, R: Worker> Orchestrator<M, R> {
+    pub fn new(mappers: Vec<M>, reducers: Vec<R>) -> Self {
         Self { mappers, reducers }
     }
 
@@ -19,7 +20,12 @@ impl Orchestrator {
         data_chunks: Vec<Vec<String>>,
         targets: Vec<String>,
         keys_per_reducer: usize,
-    ) {
+    ) where
+        M::Assignment: From<WorkAssignment>,
+        M::Completion: From<mpsc::Sender<usize>>,
+        R::Assignment: From<ReducerAssignment>,
+        R::Completion: From<mpsc::Sender<usize>>,
+    {
         println!("=== ORCHESTRATOR STARTED ===");
 
         // MAP PHASE - Distribute work to mappers
@@ -46,7 +52,7 @@ impl Orchestrator {
                     targets: targets.clone(),
                 };
                 let tx = complete_tx.clone();
-                mapper.send_map_assignment(assignment, tx);
+                mapper.send_work(assignment.into(), tx.into());
                 chunk_index += 1;
                 active_mappers += 1;
             }
@@ -65,7 +71,7 @@ impl Orchestrator {
                         targets: targets.clone(),
                     };
                     let tx = complete_tx.clone();
-                    self.mappers[mapper_id].send_map_assignment(assignment, tx);
+                    self.mappers[mapper_id].send_work(assignment.into(), tx.into());
                     chunk_index += 1;
                     active_mappers += 1;
                 }
@@ -117,7 +123,7 @@ impl Orchestrator {
                     keys: key_partitions[partition_index].clone(),
                 };
                 let tx = reduce_complete_tx.clone();
-                reducer.send_reduce_assignment(assignment, tx);
+                reducer.send_work(assignment.into(), tx.into());
                 partition_index += 1;
                 active_reducers += 1;
             }
@@ -134,7 +140,7 @@ impl Orchestrator {
                         keys: key_partitions[partition_index].clone(),
                     };
                     let tx = reduce_complete_tx.clone();
-                    self.reducers[reducer_id].send_reduce_assignment(assignment, tx);
+                    self.reducers[reducer_id].send_work(assignment.into(), tx.into());
                     partition_index += 1;
                     active_reducers += 1;
                 }

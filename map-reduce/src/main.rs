@@ -2,9 +2,12 @@ mod config;
 mod mapper;
 mod orchestrator;
 mod reducer;
+mod worker;
 
 use config::{Config, generate_random_string, generate_target_word};
+use mapper::Mapper;
 use orchestrator::Orchestrator;
+use reducer::Reducer;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -94,7 +97,7 @@ async fn main() {
     }
 
     // Create orchestrator with the worker pools
-    let orchestrator = Orchestrator::new(mappers, reducers);
+    let orchestrator: Orchestrator<Mapper, Reducer> = Orchestrator::new(mappers, reducers);
 
     // Setup Ctrl+C handler
     let ctrl_c_token = cancel_token.clone();

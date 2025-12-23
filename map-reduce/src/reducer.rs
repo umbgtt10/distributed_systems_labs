@@ -4,6 +4,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::worker::Worker;
+
 /// Reducer assignment - which keys this reducer is responsible for
 pub struct ReducerAssignment {
     pub keys: Vec<String>,
@@ -97,5 +99,19 @@ impl Reducer {
     pub async fn wait(self) -> Result<(), tokio::task::JoinError> {
         drop(self.work_tx); // Close the channel to signal task to exit
         self.task_handle.await
+    }
+}
+
+impl Worker for Reducer {
+    type Assignment = ReducerAssignment;
+    type Completion = mpsc::Sender<usize>;
+    type Error = tokio::task::JoinError;
+
+    fn send_work(&self, assignment: Self::Assignment, complete_tx: Self::Completion) {
+        self.send_reduce_assignment(assignment, complete_tx);
+    }
+
+    async fn wait(self) -> Result<(), Self::Error> {
+        Reducer::wait(self).await
     }
 }

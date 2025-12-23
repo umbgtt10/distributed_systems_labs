@@ -4,6 +4,8 @@ use tokio::sync::mpsc;
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use crate::worker::Worker;
+
 /// Work assignment for a mapper - describes what chunk to process
 #[derive(Clone)]
 pub struct WorkAssignment {
@@ -104,5 +106,19 @@ impl Mapper {
                 }
             }
         }
+    }
+}
+
+impl Worker for Mapper {
+    type Assignment = WorkAssignment;
+    type Completion = mpsc::Sender<usize>;
+    type Error = tokio::task::JoinError;
+
+    fn send_work(&self, assignment: Self::Assignment, complete_tx: Self::Completion) {
+        self.send_map_assignment(assignment, complete_tx);
+    }
+
+    async fn wait(self) -> Result<(), Self::Error> {
+        Mapper::wait(self).await
     }
 }

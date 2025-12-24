@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 map-reduce-core = { path = "../core" }
+serde = { version = "1.0", features = ["derive"] }

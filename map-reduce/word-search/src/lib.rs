@@ -6,7 +6,7 @@ use std::collections::HashMap;
 pub struct WordSearchProblem;
 
 /// Map assignment: chunk of data with target words to search for
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct MapWorkAssignment {
     pub chunk_id: usize,
     pub data: Vec<String>,
@@ -14,7 +14,7 @@ pub struct MapWorkAssignment {
 }
 
 /// Reduce assignment: keys to aggregate
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ReduceWorkAssignment {
     pub keys: Vec<String>,
 }

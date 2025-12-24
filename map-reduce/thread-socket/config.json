@@ -1,0 +1,21 @@
+{
+  "num_strings": 500000,
+  "max_string_length": 15,
+  "num_target_words": 1000,
+  "target_word_length": 3,
+  "partition_size": 5000,
+  "keys_per_reducer": 2,
+  "num_mappers": 15,
+  "num_reducers": 25,
+  "mapper_failure_probability": 2,
+  "reducer_failure_probability": 2,
+  "mapper_straggler_probability": 2,
+  "mapper_straggler_delay_ms": 2000,
+  "reducer_straggler_probability": 2,
+  "reducer_straggler_delay_ms": 2000,
+  "mapper_timeout_ms": 500,
+  "reducer_timeout_ms": 1000,
+  "mapper_base_port": 9000,
+  "reducer_base_port": 9100,
+  "completion_base_port": 9200
+}

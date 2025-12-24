@@ -1,6 +1,7 @@
 use crate::socket_completion_signaling::CompletionSender;
 use crate::socket_work_channel::{SocketWorkChannel, SocketWorkReceiver};
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
 use map_reduce_core::state_access::StateAccess;
 use map_reduce_core::worker::WorkerFactory;
@@ -57,9 +58,20 @@ impl<P, S, R, SD>
 where
     P: MapReduceProblem + 'static,
     S: StateAccess + Clone + Send + Sync + 'static,
-    R: WorkerRuntime + Clone + Send + Sync + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + 'static,
     P::MapAssignment: Send + Clone + serde::Serialize + for<'de> serde::Deserialize<'de> + 'static,
+    R: WorkerRuntime<
+            MapperTask<
+                P,
+                S,
+                SD,
+                SocketWorkReceiver<<P as MapReduceProblem>::MapAssignment, CompletionSender>,
+                CompletionSender,
+            >,
+        > + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn create_worker(
         &mut self,

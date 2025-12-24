@@ -38,9 +38,16 @@ impl CompletionSignaling for ChannelCompletionSignaling {
         }
     }
 
-    fn replace_worker(&mut self, worker_id: usize) -> Self::Token {
+    async fn reset_worker(&mut self, worker_id: usize) -> Self::Token {
         // Remove old stream
-        self.completion_streams.remove(&worker_id);
+        if let Some(mut stream) = self.completion_streams.remove(&worker_id) {
+            // Drain pending messages
+            while let Ok(Some(_)) =
+                tokio::time::timeout(tokio::time::Duration::from_millis(10), stream.next()).await
+            {
+                // Discard
+            }
+        }
 
         // Create new channel
         let (tx, rx) = mpsc::channel::<CompletionMessage>(10);
@@ -62,21 +69,5 @@ impl CompletionSignaling for ChannelCompletionSignaling {
                     Err(_) => Err(stream_idx), // stream_idx is the failed worker_id
                 }
             })
-    }
-
-    async fn drain_worker(&mut self, worker_id: usize) {
-        // Drain all pending messages from this worker's channel
-        // This prevents stale completion messages from killed workers
-        // We need to temporarily remove the stream, drain it, then re-insert
-        if let Some(mut stream) = self.completion_streams.remove(&worker_id) {
-            // Try to receive with a very short timeout to clear any pending messages
-            while let Ok(Some(_)) =
-                tokio::time::timeout(tokio::time::Duration::from_millis(10), stream.next()).await
-            {
-                // Discard the message
-            }
-            // Re-insert the drained stream
-            self.completion_streams.insert(worker_id, stream);
-        }
     }
 }

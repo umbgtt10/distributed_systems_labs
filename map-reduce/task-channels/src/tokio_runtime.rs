@@ -1,6 +1,5 @@
 use map_reduce_core::shutdown_signal::ShutdownSignal;
-use map_reduce_core::worker_runtime::WorkerRuntime;
-use std::future::Future;
+use map_reduce_core::worker_runtime::{Runnable, WorkerRuntime};
 use tokio::task::{self, JoinError, JoinHandle};
 use tokio_util::sync::CancellationToken;
 
@@ -8,16 +7,15 @@ use tokio_util::sync::CancellationToken;
 #[derive(Clone, Copy)]
 pub struct TokioRuntime;
 
-impl WorkerRuntime for TokioRuntime {
+impl<T> WorkerRuntime<T> for TokioRuntime
+where
+    T: Runnable<Output = ()> + Send + 'static,
+{
     type Handle = JoinHandle<()>;
     type Error = JoinError;
 
-    fn spawn<F, Fut>(f: F) -> Self::Handle
-    where
-        F: FnOnce() -> Fut + Send + 'static,
-        Fut: Future<Output = ()> + Send + 'static,
-    {
-        task::spawn(f())
+    fn spawn(task: T) -> Self::Handle {
+        task::spawn(task.run())
     }
 
     async fn join(handle: Self::Handle) -> Result<(), Self::Error> {

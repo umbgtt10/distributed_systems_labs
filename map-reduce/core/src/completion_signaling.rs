@@ -17,14 +17,10 @@ pub trait CompletionSignaling: Send {
         &mut self,
     ) -> impl std::future::Future<Output = Option<Result<usize, usize>>> + Send;
 
-    /// Drain any pending completion messages from a specific worker
-    /// This is necessary when killing/replacing a worker to avoid stale messages
-    fn drain_worker(&mut self, worker_id: usize) -> impl std::future::Future<Output = ()> + Send;
-
-    /// Replace the signaling mechanism for a specific worker
-    /// Returns a new token for the new worker
-    /// This ensures that the old worker cannot signal completion to the new listener
-    fn replace_worker(&mut self, worker_id: usize) -> Self::Token {
-        self.get_token(worker_id)
-    }
+    /// Reset the signaling mechanism for a specific worker
+    /// This drains any pending messages and returns a new token for the new worker
+    fn reset_worker(
+        &mut self,
+        worker_id: usize,
+    ) -> impl std::future::Future<Output = Self::Token> + Send;
 }

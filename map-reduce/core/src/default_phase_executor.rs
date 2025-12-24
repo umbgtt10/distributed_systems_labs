@@ -125,9 +125,8 @@ where
                         );
                         drop(failed_worker);
 
-                        // Drain pending messages and replace signaling token
-                        signaling.drain_worker(worker_id).await;
-                        let completion_token = signaling.replace_worker(worker_id);
+                        // Reset signaling for the worker
+                        let completion_token = signaling.reset_worker(worker_id).await;
 
                         // Reassign work
                         workers[worker_id]
@@ -195,9 +194,8 @@ where
                                     );
                                     drop(failed_worker);
 
-                                    // Drain pending messages and replace signaling token
-                                    signaling.drain_worker(worker_id).await;
-                                    let completion_token = signaling.replace_worker(worker_id);
+                                    // Reset signaling for the worker
+                                    let completion_token = signaling.reset_worker(worker_id).await;
 
                                     // Reassign work
                                     workers[worker_id].send_work(

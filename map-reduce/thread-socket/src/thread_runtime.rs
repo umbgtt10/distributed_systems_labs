@@ -1,5 +1,5 @@
 use map_reduce_core::shutdown_signal::ShutdownSignal;
-use map_reduce_core::worker_runtime::WorkerRuntime;
+use map_reduce_core::worker_runtime::{Runnable, WorkerRuntime};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};
@@ -8,20 +8,19 @@ use std::thread::{self, JoinHandle};
 #[derive(Clone, Copy)]
 pub struct ThreadRuntime;
 
-impl WorkerRuntime for ThreadRuntime {
+impl<T> WorkerRuntime<T> for ThreadRuntime
+where
+    T: Runnable<Output = ()> + Send + 'static,
+{
     type Handle = JoinHandle<()>;
     type Error = Box<dyn std::error::Error + Send + Sync>;
 
-    fn spawn<F, Fut>(f: F) -> Self::Handle
-    where
-        F: FnOnce() -> Fut + Send + 'static,
-        Fut: std::future::Future<Output = ()> + Send + 'static,
-    {
+    fn spawn(task: T) -> Self::Handle {
         // For thread-based runtime, we need to block on the future
         thread::spawn(move || {
             // Create a simple runtime for blocking on the future
             let rt = tokio::runtime::Runtime::new().unwrap();
-            rt.block_on(f());
+            rt.block_on(task.run());
         })
     }
 

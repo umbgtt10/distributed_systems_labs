@@ -1,6 +1,7 @@
 use crate::channel_wrappers::{ChannelCompletionSender, ChannelWorkReceiver};
 use crate::mpsc_work_channel::MpscWorkChannel;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
 use map_reduce_core::state_access::StateAccess;
 use map_reduce_core::worker::WorkerFactory;
@@ -57,9 +58,23 @@ impl<P, S, R, SD>
 where
     P: MapReduceProblem + 'static,
     S: StateAccess + Clone + Send + Sync + 'static,
-    R: WorkerRuntime + Clone + Send + Sync + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + 'static,
     P::ReduceAssignment: Send + Clone + 'static,
+    R: WorkerRuntime<
+            ReducerTask<
+                P,
+                S,
+                SD,
+                ChannelWorkReceiver<
+                    <P as MapReduceProblem>::ReduceAssignment,
+                    ChannelCompletionSender,
+                >,
+                ChannelCompletionSender,
+            >,
+        > + Clone
+        + Send
+        + Sync
+        + 'static,
 {
     fn create_worker(
         &mut self,

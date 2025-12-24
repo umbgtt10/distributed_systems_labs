@@ -73,8 +73,9 @@ impl CompletionSignaling for SocketCompletionSignaling {
         self.get_sender(worker_id)
     }
 
-    fn replace_worker(&mut self, worker_id: usize) -> Self::Token {
+    async fn reset_worker(&mut self, worker_id: usize) -> Self::Token {
         // Remove old listener (closes socket)
+        // This implicitly drains any pending connections because the listener is dropped
         self.listeners.remove(&worker_id);
 
         // Create new listener
@@ -124,26 +125,6 @@ impl CompletionSignaling for SocketCompletionSignaling {
             }
         }
         None
-    }
-
-    async fn drain_worker(&mut self, worker_id: usize) {
-        if let Some(mut stream) = self.listeners.remove(&worker_id) {
-            let start = std::time::Instant::now();
-            while start.elapsed() < std::time::Duration::from_millis(50) {
-                match tokio::time::timeout(std::time::Duration::from_millis(10), stream.next()).await {
-                    Ok(Some(Ok(mut conn))) => {
-                        let mut len_bytes = [0u8; 4];
-                        if conn.read_exact(&mut len_bytes).await.is_ok() {
-                            let len = u32::from_be_bytes(len_bytes) as usize;
-                            let mut buffer = vec![0u8; len];
-                            let _ = conn.read_exact(&mut buffer).await;
-                        }
-                    }
-                    _ => break,
-                }
-            }
-            self.listeners.insert(worker_id, stream);
-        }
     }
 }
 

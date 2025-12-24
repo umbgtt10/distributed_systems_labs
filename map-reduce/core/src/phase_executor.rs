@@ -1,4 +1,6 @@
+use crate::shutdown_signal::ShutdownSignal;
 use crate::worker::Worker;
+use async_trait::async_trait;
 
 /// Trait for executing a phase (map or reduce) with fault tolerance
 /// This abstracts the entire work distribution pattern:
@@ -6,6 +8,7 @@ use crate::worker::Worker;
 /// - Initial work assignment
 /// - Dynamic reassignment as workers complete
 /// - Worker shutdown
+#[async_trait]
 pub trait PhaseExecutor: Send {
     /// The type of worker this executor manages
     type Worker: Worker;
@@ -15,11 +18,13 @@ pub trait PhaseExecutor: Send {
     /// - Assigns initial work
     /// - Waits for completions and reassigns dynamically
     /// - Waits for all workers to finish
-    fn execute(
+    async fn execute<SD>(
         &mut self,
         workers: Vec<Self::Worker>,
         assignments: Vec<<Self::Worker as Worker>::Assignment>,
-    ) -> impl std::future::Future<Output = ()> + Send
+        shutdown_signal: &SD,
+    ) -> Vec<Self::Worker>
     where
+        SD: ShutdownSignal + Sync,
         <Self::Worker as Worker>::Assignment: Clone;
 }

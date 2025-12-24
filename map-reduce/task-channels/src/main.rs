@@ -12,6 +12,7 @@ use map_reduce_core::local_state_access::LocalStateAccess;
 use map_reduce_core::completion_signaling::CompletionSignaling;
 use map_reduce_core::default_phase_executor::DefaultPhaseExecutor;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::phase_executor::PhaseExecutor;
 use map_reduce_core::state_access::StateAccess;
 use map_reduce_core::utils::{generate_random_string, generate_target_word};
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
@@ -28,14 +29,7 @@ async fn main() {
     let start_time = Instant::now();
 
     // Load configuration from JSON file
-    let config = match Config::load("config.json") {
-        Ok(cfg) => cfg,
-        Err(e) => {
-            eprintln!("Failed to load task-channels/config.json: {}", e);
-            eprintln!("Using default configuration...");
-            Config::default()
-        }
-    };
+    let config = Config::load("config.json").expect("Failed to load config.json");
 
     println!("=== MAP-REDUCE WORD SEARCH ===");
     println!("Configuration:");
@@ -255,11 +249,8 @@ async fn main() {
     println!("Distributing data to {} mappers...", config.num_mappers);
     let map_assignments =
         WordSearchProblem::create_map_assignments(data, context.clone(), config.partition_size);
-    let mapper_signaling = ChannelCompletionSignaling::setup(mappers.len());
     let mappers = mapper_executor
-        .execute(mappers, map_assignments, mapper_signaling, |signaling, worker_id| {
-            signaling.get_token(worker_id)
-        })
+        .execute(mappers, map_assignments, &shutdown_signal)
         .await;
     println!("All mappers completed!");
 
@@ -268,14 +259,8 @@ async fn main() {
     println!("Starting {} reducers...", config.num_reducers);
     let reduce_assignments =
         WordSearchProblem::create_reduce_assignments(context, config.keys_per_reducer);
-    let reducer_signaling = ChannelCompletionSignaling::setup(reducers.len());
     let reducers = reducer_executor
-        .execute(
-            reducers,
-            reduce_assignments,
-            reducer_signaling,
-            |signaling, worker_id| signaling.get_token(worker_id),
-        )
+        .execute(reducers, reduce_assignments, &shutdown_signal)
         .await;
     println!("All reducers completed!");
 

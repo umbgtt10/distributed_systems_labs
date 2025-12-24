@@ -48,26 +48,3 @@ impl Config {
         Ok(config)
     }
 }
-
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            num_strings: 1_000_000,
-            max_string_length: 20,
-            num_target_words: 100,
-            target_word_length: 3,
-            partition_size: 10_000,
-            keys_per_reducer: 10,
-            num_mappers: 100,
-            num_reducers: 10,
-            mapper_failure_probability: 0,
-            reducer_failure_probability: 0,
-            mapper_timeout_ms: 0,
-            reducer_timeout_ms: 0,
-            mapper_straggler_probability: 0,
-            mapper_straggler_delay_ms: 1000,
-            reducer_straggler_probability: 0,
-            reducer_straggler_delay_ms: 1000,
-        }
-    }
-}

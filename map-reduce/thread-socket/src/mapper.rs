@@ -1,6 +1,6 @@
 use crate::socket_completion_signaling::SocketCompletionToken;
 use crate::socket_work_channel::{SocketWorkChannel, SocketWorkReceiver};
-use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
 use map_reduce_core::state_access::StateAccess;
@@ -13,7 +13,7 @@ pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     W,
     R,
     SD,
-    SocketWorkReceiver<<P as MapReduceProblem>::MapAssignment, SocketCompletionToken>,
+    SocketWorkReceiver<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
     SocketCompletionToken,
 >;
 
@@ -50,13 +50,13 @@ impl<P, S, R, SD>
         Mapper<
             P,
             S,
-            SocketWorkChannel<<P as MapReduceProblem>::MapAssignment, SocketCompletionToken>,
+            SocketWorkChannel<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
             R,
             SD,
         >,
     > for MapperFactory<P, S, R, SD>
 where
-    P: MapReduceProblem + 'static,
+    P: MapReduceJob + 'static,
     S: StateAccess + Clone + Send + Sync + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + 'static,
     P::MapAssignment: Send + Clone + serde::Serialize + for<'de> serde::Deserialize<'de> + 'static,
@@ -65,7 +65,7 @@ where
                 P,
                 S,
                 SD,
-                SocketWorkReceiver<<P as MapReduceProblem>::MapAssignment, SocketCompletionToken>,
+                SocketWorkReceiver<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
                 SocketCompletionToken,
             >,
         > + Clone
@@ -79,7 +79,7 @@ where
     ) -> Mapper<
         P,
         S,
-        SocketWorkChannel<<P as MapReduceProblem>::MapAssignment, SocketCompletionToken>,
+        SocketWorkChannel<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
         R,
         SD,
     > {

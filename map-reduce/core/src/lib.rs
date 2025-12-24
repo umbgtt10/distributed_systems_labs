@@ -2,7 +2,7 @@ pub mod completion_signaling;
 pub mod config;
 pub mod executor;
 pub mod local_state_access;
-pub mod map_reduce_problem;
+pub mod map_reduce_job;
 pub mod mapper;
 pub mod reducer;
 pub mod shutdown_signal;

@@ -1,4 +1,4 @@
-use crate::map_reduce_problem::MapReduceProblem;
+use crate::map_reduce_job::MapReduceJob;
 use crate::shutdown_signal::ShutdownSignal;
 use crate::state_access::StateAccess;
 use crate::work_channel::WorkDistributor;
@@ -31,7 +31,7 @@ pub struct MapperTask<P, S, SD, WR, CS> {
 #[async_trait]
 impl<P, S, SD, WR, CS> WorkerTask for MapperTask<P, S, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess + Send + Sync + 'static,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::MapAssignment, CS> + 'static,
@@ -108,7 +108,7 @@ where
 /// Standard Mapper worker implementation
 pub struct Mapper<P, S, W, R, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess,
     W: WorkDistributor<P::MapAssignment, CS>,
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
@@ -123,7 +123,7 @@ where
 
 impl<P, S, W, R, SD, WR, CS> Mapper<P, S, W, R, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess + Send + Sync + 'static,
     W: WorkDistributor<P::MapAssignment, CS> + 'static,
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
@@ -169,7 +169,7 @@ where
 
 impl<P, S, W, R, SD, WR, CS> crate::worker::Worker for Mapper<P, S, W, R, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess + Send + Sync + 'static,
     W: WorkDistributor<P::MapAssignment, CS> + 'static,
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,

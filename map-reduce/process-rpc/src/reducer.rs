@@ -1,6 +1,6 @@
 use crate::rpc_completion_signaling::RpcCompletionToken;
 use crate::rpc_work_channel::{RpcWorkChannel, RpcWorkReceiver};
-use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
 use map_reduce_core::state_access::StateAccess;
@@ -14,7 +14,7 @@ pub type Reducer<P, S, W, R, SD> = map_reduce_core::reducer::Reducer<
     W,
     R,
     SD,
-    RpcWorkReceiver<<P as MapReduceProblem>::ReduceAssignment, RpcCompletionToken>,
+    RpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, RpcCompletionToken>,
     RpcCompletionToken,
 >;
 
@@ -51,13 +51,13 @@ impl<P, S, R, SD>
         Reducer<
             P,
             S,
-            RpcWorkChannel<<P as MapReduceProblem>::ReduceAssignment, RpcCompletionToken>,
+            RpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, RpcCompletionToken>,
             R,
             SD,
         >,
     > for ReducerFactory<P, S, R, SD>
 where
-    P: MapReduceProblem + 'static,
+    P: MapReduceJob + 'static,
     S: StateAccess + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
     P::ReduceAssignment: Send + Clone + Serialize + for<'de> Deserialize<'de> + 'static,
@@ -66,7 +66,7 @@ where
                 P,
                 S,
                 SD,
-                RpcWorkReceiver<<P as MapReduceProblem>::ReduceAssignment, RpcCompletionToken>,
+                RpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, RpcCompletionToken>,
                 RpcCompletionToken,
             >,
         > + Clone
@@ -80,7 +80,7 @@ where
     ) -> Reducer<
         P,
         S,
-        RpcWorkChannel<<P as MapReduceProblem>::ReduceAssignment, RpcCompletionToken>,
+        RpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, RpcCompletionToken>,
         R,
         SD,
     > {

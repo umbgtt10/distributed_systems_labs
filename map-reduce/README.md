@@ -57,7 +57,7 @@ This workspace uses a **trait-based plugin architecture**:
 **Role**: Defines the trait boundaries that make infrastructure pluggable
 
 **Key Traits**:
-- `MapReduceProblem<K, V>` - Business logic contract (map/reduce functions)
+- `MapReduceJob<K, V>` - Business logic contract (map/reduce functions)
 - `StateAccess<S, K, V>` - Key-value storage abstraction (local or remote)
 - `WorkChannel<A, C>` - Work distribution to workers
 - `CompletionSignaling` - Worker completion notifications

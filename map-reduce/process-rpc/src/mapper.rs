@@ -1,6 +1,6 @@
 use crate::rpc_completion_signaling::RpcCompletionToken;
 use crate::rpc_work_channel::{RpcWorkChannel, RpcWorkReceiver};
-use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
 use map_reduce_core::state_access::StateAccess;
@@ -14,7 +14,7 @@ pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     W,
     R,
     SD,
-    RpcWorkReceiver<<P as MapReduceProblem>::MapAssignment, RpcCompletionToken>,
+    RpcWorkReceiver<<P as MapReduceJob>::MapAssignment, RpcCompletionToken>,
     RpcCompletionToken,
 >;
 
@@ -48,16 +48,10 @@ impl<P, S, R, SD> MapperFactory<P, S, R, SD> {
 
 impl<P, S, R, SD>
     WorkerFactory<
-        Mapper<
-            P,
-            S,
-            RpcWorkChannel<<P as MapReduceProblem>::MapAssignment, RpcCompletionToken>,
-            R,
-            SD,
-        >,
+        Mapper<P, S, RpcWorkChannel<<P as MapReduceJob>::MapAssignment, RpcCompletionToken>, R, SD>,
     > for MapperFactory<P, S, R, SD>
 where
-    P: MapReduceProblem + 'static,
+    P: MapReduceJob + 'static,
     S: StateAccess + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
     P::MapAssignment: Send + Clone + Serialize + for<'de> Deserialize<'de> + 'static,
@@ -66,7 +60,7 @@ where
                 P,
                 S,
                 SD,
-                RpcWorkReceiver<<P as MapReduceProblem>::MapAssignment, RpcCompletionToken>,
+                RpcWorkReceiver<<P as MapReduceJob>::MapAssignment, RpcCompletionToken>,
                 RpcCompletionToken,
             >,
         > + Clone
@@ -77,13 +71,8 @@ where
     fn create_worker(
         &mut self,
         id: usize,
-    ) -> Mapper<
-        P,
-        S,
-        RpcWorkChannel<<P as MapReduceProblem>::MapAssignment, RpcCompletionToken>,
-        R,
-        SD,
-    > {
+    ) -> Mapper<P, S, RpcWorkChannel<<P as MapReduceJob>::MapAssignment, RpcCompletionToken>, R, SD>
+    {
         // Pick a random port between 10000 and 60000
         let port = rand::random::<u16>() % 50000 + 10000;
         let addr = format!("127.0.0.1:{}", port).parse().unwrap();

@@ -6,7 +6,7 @@ mod thread_runtime;
 
 use map_reduce_core::config::Config;
 use map_reduce_core::local_state_access::LocalStateAccess;
-use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::state_access::StateAccess;
 use map_reduce_core::utils::{generate_test_data, initialize_phase};
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
@@ -50,7 +50,7 @@ async fn main() {
     type MapperType = Mapper<
         WordSearchProblem,
         LocalStateAccess,
-        SocketWorkChannel<<WordSearchProblem as MapReduceProblem>::MapAssignment, SocketCompletionToken>,
+        SocketWorkChannel<<WordSearchProblem as MapReduceJob>::MapAssignment, SocketCompletionToken>,
         ThreadRuntime,
         AtomicShutdownSignal,
     >;
@@ -59,7 +59,7 @@ async fn main() {
         WordSearchProblem,
         LocalStateAccess,
         SocketWorkChannel<
-            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
+            <WordSearchProblem as MapReduceJob>::ReduceAssignment,
             SocketCompletionToken,
         >,
         ThreadRuntime,

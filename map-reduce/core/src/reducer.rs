@@ -1,4 +1,4 @@
-use crate::map_reduce_problem::MapReduceProblem;
+use crate::map_reduce_job::MapReduceJob;
 use crate::shutdown_signal::ShutdownSignal;
 use crate::state_access::StateAccess;
 use crate::work_channel::WorkDistributor;
@@ -31,7 +31,7 @@ pub struct ReducerTask<P, S, SD, WR, CS> {
 #[async_trait]
 impl<P, S, SD, WR, CS> WorkerTask for ReducerTask<P, S, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess + Send + Sync + 'static,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::ReduceAssignment, CS> + 'static,
@@ -110,7 +110,7 @@ where
 /// Standard Reducer worker implementation
 pub struct Reducer<P, S, W, R, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess,
     W: WorkDistributor<P::ReduceAssignment, CS>,
     R: WorkerRuntime<ReducerTask<P, S, SD, WR, CS>>,
@@ -125,7 +125,7 @@ where
 
 impl<P, S, W, R, SD, WR, CS> Reducer<P, S, W, R, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess + Send + Sync + 'static,
     W: WorkDistributor<P::ReduceAssignment, CS> + 'static,
     R: WorkerRuntime<ReducerTask<P, S, SD, WR, CS>>,
@@ -171,7 +171,7 @@ where
 
 impl<P, S, W, R, SD, WR, CS> crate::worker::Worker for Reducer<P, S, W, R, SD, WR, CS>
 where
-    P: MapReduceProblem,
+    P: MapReduceJob,
     S: StateAccess + Send + Sync + 'static,
     W: WorkDistributor<P::ReduceAssignment, CS> + 'static,
     R: WorkerRuntime<ReducerTask<P, S, SD, WR, CS>>,

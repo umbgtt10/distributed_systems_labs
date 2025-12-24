@@ -1,8 +1,8 @@
 use crate::state_access::StateAccess;
 
-/// Trait that defines a specific MapReduce problem
-/// Abstracts the problem domain from the execution model
-pub trait MapReduceProblem: Send + 'static {
+/// Trait that defines a specific MapReduce job
+/// Abstracts the job domain from the execution model
+pub trait MapReduceJob: Send + 'static {
     /// The input data type for the map phase
     type Input: Send;
 

@@ -10,7 +10,7 @@ mod state_server;
 use clap::Parser;
 use map_reduce_core::config::Config;
 use map_reduce_core::local_state_access::LocalStateAccess;
-use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
@@ -71,7 +71,7 @@ async fn run_worker(cli: Cli) {
                 RpcStateAccess,
                 DummyShutdownSignal,
                 RpcWorkReceiver<
-                    <WordSearchProblem as MapReduceProblem>::MapAssignment,
+                    <WordSearchProblem as MapReduceJob>::MapAssignment,
                     RpcCompletionToken,
                 >,
                 RpcCompletionToken,
@@ -84,7 +84,7 @@ async fn run_worker(cli: Cli) {
                 RpcStateAccess,
                 DummyShutdownSignal,
                 RpcWorkReceiver<
-                    <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
+                    <WordSearchProblem as MapReduceJob>::ReduceAssignment,
                     RpcCompletionToken,
                 >,
                 RpcCompletionToken,
@@ -127,7 +127,7 @@ async fn run_coordinator() {
     type MapperType = Mapper<
         WordSearchProblem,
         RpcStateAccess,
-        RpcWorkChannel<<WordSearchProblem as MapReduceProblem>::MapAssignment, RpcCompletionToken>,
+        RpcWorkChannel<<WordSearchProblem as MapReduceJob>::MapAssignment, RpcCompletionToken>,
         MapperProcessRuntime,
         DummyShutdownSignal,
     >;
@@ -136,7 +136,7 @@ async fn run_coordinator() {
         WordSearchProblem,
         RpcStateAccess,
         RpcWorkChannel<
-            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
+            <WordSearchProblem as MapReduceJob>::ReduceAssignment,
             RpcCompletionToken,
         >,
         ReducerProcessRuntime,

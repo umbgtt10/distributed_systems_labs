@@ -1,6 +1,6 @@
 use crate::channel_wrappers::{ChannelCompletionSender, ChannelWorkReceiver};
 use crate::mpsc_work_channel::MpscWorkChannel;
-use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
 use map_reduce_core::state_access::StateAccess;
@@ -13,7 +13,7 @@ pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     W,
     R,
     SD,
-    ChannelWorkReceiver<<P as MapReduceProblem>::MapAssignment, ChannelCompletionSender>,
+    ChannelWorkReceiver<<P as MapReduceJob>::MapAssignment, ChannelCompletionSender>,
     ChannelCompletionSender,
 >;
 
@@ -50,13 +50,13 @@ impl<P, S, R, SD>
         Mapper<
             P,
             S,
-            MpscWorkChannel<<P as MapReduceProblem>::MapAssignment, ChannelCompletionSender>,
+            MpscWorkChannel<<P as MapReduceJob>::MapAssignment, ChannelCompletionSender>,
             R,
             SD,
         >,
     > for MapperFactory<P, S, R, SD>
 where
-    P: MapReduceProblem + 'static,
+    P: MapReduceJob + 'static,
     S: StateAccess + Clone + Send + Sync + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + 'static,
     P::MapAssignment: Send + Clone + 'static,
@@ -65,10 +65,7 @@ where
                 P,
                 S,
                 SD,
-                ChannelWorkReceiver<
-                    <P as MapReduceProblem>::MapAssignment,
-                    ChannelCompletionSender,
-                >,
+                ChannelWorkReceiver<<P as MapReduceJob>::MapAssignment, ChannelCompletionSender>,
                 ChannelCompletionSender,
             >,
         > + Clone
@@ -82,12 +79,12 @@ where
     ) -> Mapper<
         P,
         S,
-        MpscWorkChannel<<P as MapReduceProblem>::MapAssignment, ChannelCompletionSender>,
+        MpscWorkChannel<<P as MapReduceJob>::MapAssignment, ChannelCompletionSender>,
         R,
         SD,
     > {
         let (work_channel, work_rx) = MpscWorkChannel::<
-            <P as MapReduceProblem>::MapAssignment,
+            <P as MapReduceJob>::MapAssignment,
             ChannelCompletionSender,
         >::create_pair(10);
         let wrapped_rx = ChannelWorkReceiver { rx: work_rx };

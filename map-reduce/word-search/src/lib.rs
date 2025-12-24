@@ -1,4 +1,4 @@
-use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::state_access::StateAccess;
 use std::collections::HashMap;
 
@@ -25,7 +25,7 @@ pub struct WordSearchContext {
     pub targets: Vec<String>,
 }
 
-impl MapReduceProblem for WordSearchProblem {
+impl MapReduceJob for WordSearchProblem {
     type Input = Vec<String>;
     type MapAssignment = MapWorkAssignment;
     type ReduceAssignment = ReduceWorkAssignment;

@@ -7,19 +7,22 @@ mod reducer;
 mod task_work_distributor;
 mod tokio_runtime;
 
-use channel_completion_signaling::ChannelCompletionSignaling;
+use channel_completion_signaling::{ChannelCompletionSignaling, CompletionMessage};
 use config::{generate_random_string, generate_target_word, Config};
 use local_state_access::LocalStateAccess;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
 use map_reduce_core::orchestrator::Orchestrator;
 use map_reduce_core::state_access::StateAccess;
-use map_reduce_word_search::{WordSearchProblem, WordSearchContext};
+use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
 use mapper::Mapper;
 use mpsc_work_channel::MpscWorkChannel;
 use reducer::Reducer;
 use std::time::Instant;
 use task_work_distributor::TaskWorkDistributor;
-use tokio_runtime::{TokioRuntime, TokenShutdownSignal};
+use tokio::sync::mpsc::Sender;
+use tokio::{signal, spawn};
+use tokio_runtime::{TokenShutdownSignal, TokioRuntime};
+use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
 async fn main() {
@@ -45,19 +48,37 @@ async fn main() {
     println!("  - Keys per reducer: {}", config.keys_per_reducer);
     println!("  - Mappers: {}", config.num_mappers);
     println!("  - Reducers: {}", config.num_reducers);
-    if config.mapper_failure_probability > 0 || config.reducer_failure_probability > 0 || config.mapper_straggler_probability > 0 || config.reducer_straggler_probability > 0 || config.mapper_timeout_ms > 0 || config.reducer_timeout_ms > 0 {
+    if config.mapper_failure_probability > 0
+        || config.reducer_failure_probability > 0
+        || config.mapper_straggler_probability > 0
+        || config.reducer_straggler_probability > 0
+        || config.mapper_timeout_ms > 0
+        || config.reducer_timeout_ms > 0
+    {
         println!("\nFault Tolerance:");
         if config.mapper_failure_probability > 0 {
-            println!("  - Mapper failure probability: {}%", config.mapper_failure_probability);
+            println!(
+                "  - Mapper failure probability: {}%",
+                config.mapper_failure_probability
+            );
         }
         if config.reducer_failure_probability > 0 {
-            println!("  - Reducer failure probability: {}%", config.reducer_failure_probability);
+            println!(
+                "  - Reducer failure probability: {}%",
+                config.reducer_failure_probability
+            );
         }
         if config.mapper_straggler_probability > 0 {
-            println!("  - Mapper straggler probability: {}% (delay up to {}ms)", config.mapper_straggler_probability, config.mapper_straggler_delay_ms);
+            println!(
+                "  - Mapper straggler probability: {}% (delay up to {}ms)",
+                config.mapper_straggler_probability, config.mapper_straggler_delay_ms
+            );
         }
         if config.reducer_straggler_probability > 0 {
-            println!("  - Reducer straggler probability: {}% (delay up to {}ms)", config.reducer_straggler_probability, config.reducer_straggler_delay_ms);
+            println!(
+                "  - Reducer straggler probability: {}% (delay up to {}ms)",
+                config.reducer_straggler_probability, config.reducer_straggler_delay_ms
+            );
         }
         if config.mapper_timeout_ms > 0 {
             println!("  - Mapper timeout: {}ms", config.mapper_timeout_ms);
@@ -91,14 +112,17 @@ async fn main() {
     println!("\nStarting MapReduce...");
 
     // Create cancellation token
-    let cancel_token = tokio_util::sync::CancellationToken::new();
+    let cancel_token = CancellationToken::new();
     let shutdown_signal = TokenShutdownSignal::new(cancel_token.clone());
 
     // Define mapper type
     type MapperType = Mapper<
         WordSearchProblem,
         LocalStateAccess,
-        MpscWorkChannel<<WordSearchProblem as map_reduce_core::map_reduce_problem::MapReduceProblem>::MapAssignment, tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>>,
+        MpscWorkChannel<
+            <WordSearchProblem as MapReduceProblem>::MapAssignment,
+            Sender<CompletionMessage>,
+        >,
         TokioRuntime,
         TokenShutdownSignal,
     >;
@@ -112,7 +136,7 @@ async fn main() {
     let mapper_factory = move |mapper_id: usize| -> MapperType {
         let (work_channel, work_rx) = MpscWorkChannel::<
             <WordSearchProblem as MapReduceProblem>::MapAssignment,
-            tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>
+            Sender<CompletionMessage>,
         >::create_pair(10);
         Mapper::new(
             mapper_id,
@@ -147,7 +171,10 @@ async fn main() {
     type ReducerType = Reducer<
         WordSearchProblem,
         LocalStateAccess,
-        MpscWorkChannel<<WordSearchProblem as map_reduce_core::map_reduce_problem::MapReduceProblem>::ReduceAssignment, tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>>,
+        MpscWorkChannel<
+            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
+            Sender<CompletionMessage>,
+        >,
         TokioRuntime,
         TokenShutdownSignal,
     >;
@@ -161,7 +188,7 @@ async fn main() {
     let reducer_factory = move |reducer_id: usize| -> ReducerType {
         let (work_channel, work_rx) = MpscWorkChannel::<
             <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
-            tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>
+            Sender<CompletionMessage>,
         >::create_pair(10);
         Reducer::new(
             reducer_id,
@@ -180,7 +207,7 @@ async fn main() {
     for reducer_id in 0..config.num_reducers {
         let (work_channel, work_rx) = MpscWorkChannel::<
             <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
-            tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>
+            Sender<CompletionMessage>,
         >::create_pair(10);
         let reducer = Reducer::new(
             reducer_id,
@@ -196,31 +223,32 @@ async fn main() {
     }
 
     // Create work distributors with factories and timeouts
-    let mapper_distributor = TaskWorkDistributor::<MapperType, ChannelCompletionSignaling, _>::with_timeout(
+    let mapper_distributor = TaskWorkDistributor::<MapperType, ChannelCompletionSignaling, _>::new(
         mapper_factory,
-        config.mapper_timeout_ms
+        config.mapper_timeout_ms,
     );
 
-    let reducer_distributor = TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling, _>::with_timeout(
-        reducer_factory,
-        config.reducer_timeout_ms
-    );
+    let reducer_distributor =
+        TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling, _>::new(
+            reducer_factory,
+            config.reducer_timeout_ms,
+        );
 
     // Create orchestrator with the distributors
     let orchestrator = Orchestrator::new(mapper_distributor, reducer_distributor);
 
     // Setup Ctrl+C handler
     let ctrl_c_token = cancel_token.clone();
-    tokio::spawn(async move {
-        tokio::signal::ctrl_c()
-            .await
-            .expect("Failed to listen for Ctrl+C");
+    spawn(async move {
+        signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
         println!("\n\n=== Ctrl+C received, initiating shutdown ===");
         ctrl_c_token.cancel();
     });
 
     // Run the orchestrator with factory functions from the problem
-    let context = WordSearchContext { targets: targets.clone() };
+    let context = WordSearchContext {
+        targets: targets.clone(),
+    };
 
     orchestrator
         .run(

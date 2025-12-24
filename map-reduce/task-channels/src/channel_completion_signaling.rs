@@ -36,12 +36,15 @@ impl CompletionSignaling for ChannelCompletionSignaling {
     }
 
     async fn wait_next(&mut self) -> Option<Result<usize, usize>> {
-        self.completion_streams.next().await.map(|(stream_idx, msg)| {
-            match msg {
-                Ok(worker_id) => Ok(worker_id),
-                Err(_) => Err(stream_idx), // stream_idx is the failed worker_id
-            }
-        })
+        self.completion_streams
+            .next()
+            .await
+            .map(|(stream_idx, msg)| {
+                match msg {
+                    Ok(worker_id) => Ok(worker_id),
+                    Err(_) => Err(stream_idx), // stream_idx is the failed worker_id
+                }
+            })
     }
 
     async fn drain_worker(&mut self, worker_id: usize) {
@@ -50,10 +53,9 @@ impl CompletionSignaling for ChannelCompletionSignaling {
         // We need to temporarily remove the stream, drain it, then re-insert
         if let Some(mut stream) = self.completion_streams.remove(&worker_id) {
             // Try to receive with a very short timeout to clear any pending messages
-            while let Ok(Some(_)) = tokio::time::timeout(
-                tokio::time::Duration::from_millis(10),
-                stream.next()
-            ).await {
+            while let Ok(Some(_)) =
+                tokio::time::timeout(tokio::time::Duration::from_millis(10), stream.next()).await
+            {
                 // Discard the message
             }
             // Re-insert the drained stream

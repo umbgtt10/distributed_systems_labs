@@ -2,7 +2,10 @@ use map_reduce_core::completion_signaling::CompletionSignaling;
 use map_reduce_core::work_distributor::WorkDistributor;
 use map_reduce_core::worker::Worker;
 use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::mem;
 use std::time::{Duration, Instant};
+use tokio::time::timeout;
 
 /// Assignment tracking information
 #[derive(Clone)]
@@ -21,25 +24,21 @@ where
 {
     worker_factory: F,
     timeout: Option<Duration>,
-    _phantom: std::marker::PhantomData<(W, CS)>,
+    _phantom: PhantomData<(W, CS)>,
 }
 
 impl<W: Worker, CS: CompletionSignaling, F> TaskWorkDistributor<W, CS, F>
 where
     F: FnMut(usize) -> W + Send,
 {
-    pub fn new(worker_factory: F) -> Self {
+    pub fn new(worker_factory: F, timeout_ms: u64) -> Self {
         Self {
             worker_factory,
-            timeout: None,
-            _phantom: std::marker::PhantomData,
-        }
-    }
-
-    pub fn with_timeout(worker_factory: F, timeout_ms: u64) -> Self {
-        Self {
-            worker_factory,
-            timeout: if timeout_ms > 0 { Some(Duration::from_millis(timeout_ms)) } else { None },
+            timeout: if timeout_ms > 0 {
+                Some(Duration::from_millis(timeout_ms))
+            } else {
+                None
+            },
             _phantom: std::marker::PhantomData,
         }
     }
@@ -68,7 +67,10 @@ where
         let mut assignment_index = 0;
 
         // Track which assignment each worker is currently processing with start time
-        let mut worker_assignments: HashMap<usize, AssignmentInfo<<Self::Worker as Worker>::Assignment>> = HashMap::new();
+        let mut worker_assignments: HashMap<
+            usize,
+            AssignmentInfo<<Self::Worker as Worker>::Assignment>,
+        > = HashMap::new();
 
         // Track active workers
         let mut active_workers = 0;
@@ -79,10 +81,13 @@ where
                 let assignment = assignments[assignment_index].clone();
                 let token = signaling.get_token(worker_idx);
                 workers[worker_idx].send_work(assignment.clone(), token.into());
-                worker_assignments.insert(worker_idx, AssignmentInfo {
-                    assignment,
-                    start_time: Instant::now(),
-                });
+                worker_assignments.insert(
+                    worker_idx,
+                    AssignmentInfo {
+                        assignment,
+                        start_time: Instant::now(),
+                    },
+                );
                 assignment_index += 1;
                 active_workers += 1;
             }
@@ -107,7 +112,8 @@ where
                         eprintln!("⏱️  Worker {} is a straggler (timeout exceeded)! Respawning and reassigning work...", worker_id);
 
                         // Drop the slow worker and spawn a new one
-                        let failed_worker = std::mem::replace(&mut workers[worker_id], (self.worker_factory)(worker_id));
+                        let failed_worker =
+                            mem::replace(&mut workers[worker_id], (self.worker_factory)(worker_id));
                         drop(failed_worker);
 
                         // Drain any pending completion messages from the old worker
@@ -117,18 +123,24 @@ where
                         // Reassign the same work to the new worker
                         let token = signaling.get_token(worker_id);
                         workers[worker_id].send_work(info.assignment.clone(), token.into());
-                        worker_assignments.insert(worker_id, AssignmentInfo {
-                            assignment: info.assignment,
-                            start_time: Instant::now(),
-                        });
+                        worker_assignments.insert(
+                            worker_id,
+                            AssignmentInfo {
+                                assignment: info.assignment,
+                                start_time: Instant::now(),
+                            },
+                        );
                         // active_workers stays the same - we replaced the worker
                     }
                 }
             }
 
             // Wait for completion with a small timeout to allow straggler checks
-            let wait_duration = self.timeout.map(|t| t / 10).unwrap_or(Duration::from_secs(60));
-            if let Ok(Some(result)) = tokio::time::timeout(wait_duration, signaling.wait_next()).await {
+            let wait_duration = self
+                .timeout
+                .map(|t| t / 10)
+                .unwrap_or(Duration::from_secs(60));
+            if let Ok(Some(result)) = timeout(wait_duration, signaling.wait_next()).await {
                 match result {
                     Ok(worker_id) => {
                         // Worker completed successfully
@@ -140,22 +152,31 @@ where
                             let assignment = assignments[assignment_index].clone();
                             let token = signaling.get_token(worker_id);
                             workers[worker_id].send_work(assignment.clone(), token.into());
-                            worker_assignments.insert(worker_id, AssignmentInfo {
-                                assignment,
-                                start_time: Instant::now(),
-                            });
+                            worker_assignments.insert(
+                                worker_id,
+                                AssignmentInfo {
+                                    assignment,
+                                    start_time: Instant::now(),
+                                },
+                            );
                             assignment_index += 1;
                             active_workers += 1;
                         }
                     }
                     Err(worker_id) => {
                         // Worker failed - respawn and reassign
-                        println!("⚠️  Worker {} failed! Respawning and reassigning work...", worker_id);
+                        println!(
+                            "⚠️  Worker {} failed! Respawning and reassigning work...",
+                            worker_id
+                        );
 
                         // Get the assignment that failed
                         if let Some(info) = worker_assignments.get(&worker_id).cloned() {
                             // Wait for the failed worker to clean up (drop it)
-                            let failed_worker = std::mem::replace(&mut workers[worker_id], (self.worker_factory)(worker_id));
+                            let failed_worker = mem::replace(
+                                &mut workers[worker_id],
+                                (self.worker_factory)(worker_id),
+                            );
                             drop(failed_worker);
 
                             // Drain any pending completion messages from the old worker
@@ -165,10 +186,13 @@ where
                             // Reassign the same work to the new worker
                             let token = signaling.get_token(worker_id);
                             workers[worker_id].send_work(info.assignment.clone(), token.into());
-                            worker_assignments.insert(worker_id, AssignmentInfo {
-                                assignment: info.assignment,
-                                start_time: Instant::now(),
-                            });
+                            worker_assignments.insert(
+                                worker_id,
+                                AssignmentInfo {
+                                    assignment: info.assignment,
+                                    start_time: Instant::now(),
+                                },
+                            );
                             // active_workers stays the same - we replaced the worker
                         }
                     }

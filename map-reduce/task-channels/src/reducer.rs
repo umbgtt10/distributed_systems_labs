@@ -5,7 +5,10 @@ use map_reduce_core::work_channel::WorkChannel;
 use map_reduce_core::worker::Worker;
 use map_reduce_core::worker_runtime::WorkerRuntime;
 use rand::Rng;
+use std::marker::PhantomData;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use tokio::sync::mpsc;
+use tokio::time::{sleep, Duration};
 
 /// Reducer worker that executes reduce work for a given problem
 /// Generic over problem type, state access, work channel, runtime, and shutdown mechanism
@@ -19,7 +22,7 @@ where
 {
     work_channel: W,
     task_handle: R::Handle,
-    _phantom: std::marker::PhantomData<(P, S, SD)>,
+    _phantom: PhantomData<(P, S, SD)>,
 }
 
 impl<P, S, W, R, SD> Reducer<P, S, W, R, SD>
@@ -40,7 +43,17 @@ where
         straggler_probability: u32,
         straggler_delay_ms: u64,
     ) -> Self {
-        let handle = R::spawn(move || Self::run_task(id, work_rx, state, shutdown_signal, failure_probability, straggler_probability, straggler_delay_ms));
+        let handle = R::spawn(move || {
+            Self::run_task(
+                id,
+                work_rx,
+                state,
+                shutdown_signal,
+                failure_probability,
+                straggler_probability,
+                straggler_delay_ms,
+            )
+        });
 
         Self {
             work_channel,
@@ -89,12 +102,12 @@ where
                                 if random_value < straggler_probability {
                                     let delay = rand::rng().random_range(1..=straggler_delay_ms);
                                     eprintln!("🐌 Reducer {} is a straggler! Delaying {}ms", id, delay);
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(delay)).await;
+                                    sleep(Duration::from_millis(delay)).await;
                                 }
                             }
 
                             // Execute problem-specific reduce work with error handling
-                            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                            let result = catch_unwind(AssertUnwindSafe(|| {
                                 P::reduce_work(&assignment, &state);
                             }));
 

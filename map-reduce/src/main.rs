@@ -1,22 +1,27 @@
 mod channel_completion_signaling;
 mod completion_signaling;
 mod config;
+mod map_reduce_logic;
 mod mapper;
 mod orchestrator;
 mod reducer;
+mod state_access;
 mod task_work_distributor;
+mod work_channel;
 mod work_distributor;
 mod worker;
+mod worker_runtime;
 
 use channel_completion_signaling::ChannelCompletionSignaling;
 use config::{Config, generate_random_string, generate_target_word};
-use mapper::Mapper;
+use mapper::{Mapper, WorkAssignment};
 use orchestrator::Orchestrator;
-use reducer::Reducer;
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use reducer::{Reducer, ReducerAssignment};
+use state_access::{LocalStateAccess, StateAccess};
 use std::time::Instant;
 use task_work_distributor::TaskWorkDistributor;
+use work_channel::MpscWorkChannel;
+use worker_runtime::{TokenShutdownSignal, TokioRuntime};
 
 #[tokio::main]
 async fn main() {
@@ -60,13 +65,9 @@ async fn main() {
 
     println!("Generated {} target words", targets.len());
 
-    // Create shared HashMap<String, Vec<i32>> for mappers to update
-    let shared_map: Arc<Mutex<HashMap<String, Vec<i32>>>> = Arc::new(Mutex::new(
-        targets
-            .iter()
-            .map(|word| (word.clone(), Vec::new()))
-            .collect(),
-    ));
+    // Create state access layer
+    let state = LocalStateAccess::new();
+    state.initialize(targets.clone());
 
     // Partition data into chunks based on partition_size
     let mut data_chunks = Vec::new();
@@ -87,24 +88,53 @@ async fn main() {
 
     // Create cancellation token
     let cancel_token = tokio_util::sync::CancellationToken::new();
+    let shutdown_signal = TokenShutdownSignal::new(cancel_token.clone());
 
     // Create mapper pool
-    let mut mappers = Vec::new();
+    type MapperType = Mapper<
+        LocalStateAccess,
+        MpscWorkChannel<WorkAssignment, tokio::sync::mpsc::Sender<usize>>,
+        TokioRuntime,
+        TokenShutdownSignal,
+    >;
+
+    let mut mappers: Vec<MapperType> = Vec::new();
     for mapper_id in 0..config.num_mappers {
-        let mapper = mapper::Mapper::new(mapper_id, shared_map.clone(), cancel_token.clone());
+        let (work_channel, work_rx) = MpscWorkChannel::create_pair(10);
+        let mapper = Mapper::new(
+            mapper_id,
+            state.clone(),
+            shutdown_signal.clone(),
+            work_rx,
+            work_channel,
+        );
         mappers.push(mapper);
     }
 
     // Create reducer pool
-    let mut reducers = Vec::new();
+    type ReducerType = Reducer<
+        LocalStateAccess,
+        MpscWorkChannel<ReducerAssignment, tokio::sync::mpsc::Sender<usize>>,
+        TokioRuntime,
+        TokenShutdownSignal,
+    >;
+
+    let mut reducers: Vec<ReducerType> = Vec::new();
     for reducer_id in 0..config.num_reducers {
-        let reducer = reducer::Reducer::new(reducer_id, shared_map.clone(), cancel_token.clone());
+        let (work_channel, work_rx) = MpscWorkChannel::create_pair(10);
+        let reducer = Reducer::new(
+            reducer_id,
+            state.clone(),
+            shutdown_signal.clone(),
+            work_rx,
+            work_channel,
+        );
         reducers.push(reducer);
     }
 
     // Create work distributors
-    let mapper_distributor = TaskWorkDistributor::<Mapper, ChannelCompletionSignaling>::new();
-    let reducer_distributor = TaskWorkDistributor::<Reducer, ChannelCompletionSignaling>::new();
+    let mapper_distributor = TaskWorkDistributor::<MapperType, ChannelCompletionSignaling>::new();
+    let reducer_distributor = TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling>::new();
 
     // Create orchestrator with the distributors
     let orchestrator = Orchestrator::new(mapper_distributor, reducer_distributor);
@@ -130,8 +160,9 @@ async fn main() {
         )
         .await;
 
-    // Extract final results
-    let final_results = shared_map.lock().unwrap();
+    // Extract final results from state
+    let final_results_map = state.get_map();
+    let final_results = final_results_map.lock().unwrap();
 
     // Display results
     println!("\n=== RESULTS ===");

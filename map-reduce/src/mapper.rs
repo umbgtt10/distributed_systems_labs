@@ -1,10 +1,9 @@
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-use tokio::sync::mpsc;
-use tokio::task::JoinHandle;
-use tokio_util::sync::CancellationToken;
-
+use crate::map_reduce_logic::map_logic;
+use crate::state_access::StateAccess;
+use crate::work_channel::WorkChannel;
 use crate::worker::Worker;
+use crate::worker_runtime::{ShutdownSignal, WorkerRuntime};
+use tokio::sync::mpsc;
 
 /// Work assignment for a mapper - describes what chunk to process
 #[derive(Clone)]
@@ -15,24 +14,39 @@ pub struct WorkAssignment {
 }
 
 /// Mapper worker that searches for target words in its data chunk
-pub struct Mapper {
-    work_tx: mpsc::Sender<(WorkAssignment, mpsc::Sender<usize>)>,
-    task_handle: JoinHandle<()>,
+/// Generic over state access, work channel, runtime, and shutdown mechanism
+pub struct Mapper<S, W, R, SD>
+where
+    S: StateAccess,
+    W: WorkChannel<WorkAssignment, mpsc::Sender<usize>>,
+    R: WorkerRuntime,
+    SD: ShutdownSignal,
+{
+    work_channel: W,
+    task_handle: R::Handle,
+    _phantom: std::marker::PhantomData<(S, SD)>,
 }
 
-impl Mapper {
+impl<S, W, R, SD> Mapper<S, W, R, SD>
+where
+    S: StateAccess,
+    W: WorkChannel<WorkAssignment, mpsc::Sender<usize>>,
+    R: WorkerRuntime,
+    SD: ShutdownSignal,
+{
     pub fn new(
         id: usize,
-        shared_map: Arc<Mutex<HashMap<String, Vec<i32>>>>,
-        cancel_token: CancellationToken,
+        state: S,
+        shutdown_signal: SD,
+        work_rx: mpsc::Receiver<(WorkAssignment, mpsc::Sender<usize>)>,
+        work_channel: W,
     ) -> Self {
-        let (work_tx, work_rx) = mpsc::channel::<(WorkAssignment, mpsc::Sender<usize>)>(10);
-
-        let handle = tokio::spawn(Self::run_task(id, work_rx, shared_map, cancel_token));
+        let handle = R::spawn(move || Self::run_task(id, work_rx, state, shutdown_signal));
 
         Self {
-            work_tx,
+            work_channel,
             task_handle: handle,
+            _phantom: std::marker::PhantomData,
         }
     }
 
@@ -42,21 +56,20 @@ impl Mapper {
         assignment: WorkAssignment,
         complete_tx: mpsc::Sender<usize>,
     ) {
-        // Send work to the mapper task
-        let _ = self.work_tx.try_send((assignment, complete_tx));
+        self.work_channel.send_work(assignment, complete_tx);
     }
 
     /// Waits for the mapper task to complete
-    pub async fn wait(self) -> Result<(), tokio::task::JoinError> {
-        drop(self.work_tx); // Close the channel to signal task to exit
-        self.task_handle.await
+    pub async fn wait(self) -> Result<(), R::Error> {
+        drop(self.work_channel); // Close the channel to signal task to exit
+        R::join(self.task_handle).await
     }
 
     async fn run_task(
         id: usize,
         mut work_rx: mpsc::Receiver<(WorkAssignment, mpsc::Sender<usize>)>,
-        shared_map: Arc<Mutex<HashMap<String, Vec<i32>>>>,
-        cancel_token: CancellationToken,
+        state: S,
+        shutdown_signal: SD,
     ) {
         loop {
             tokio::select! {
@@ -67,23 +80,19 @@ impl Mapper {
                                 println!("Mapper {} processing chunk {}", id, assignment.chunk_id);
                             }
 
-                            // Process each string in the chunk
-                            for text in assignment.data {
-                                // Check for cancellation
-                                if cancel_token.is_cancelled() {
-                                    println!("Mapper {} cancelled", id);
-                                    return;
-                                }
+                            // Check for cancellation
+                            if shutdown_signal.is_cancelled() {
+                                println!("Mapper {} cancelled", id);
+                                return;
+                            }
 
-                                // Search for each target word in the text
-                                for target in &assignment.targets {
-                                    if text.contains(target.as_str()) {
-                                        // Found a match! Add 1 to the vector for this target
-                                        let mut map = shared_map.lock().unwrap();
-                                        if let Some(vec) = map.get_mut(target) {
-                                            vec.push(1);
-                                        }
-                                    }
+                            // Use pure business logic
+                            let results = map_logic(&assignment.data, &assignment.targets);
+
+                            // Write results to state
+                            for (target, count) in results {
+                                if count > 0 {
+                                    state.update(target, count);
                                 }
                             }
 
@@ -100,19 +109,21 @@ impl Mapper {
                         }
                     }
                 }
-                _ = cancel_token.cancelled() => {
-                    println!("Mapper {} cancelled", id);
-                    break;
-                }
             }
         }
     }
 }
 
-impl Worker for Mapper {
+impl<S, W, R, SD> Worker for Mapper<S, W, R, SD>
+where
+    S: StateAccess,
+    W: WorkChannel<WorkAssignment, mpsc::Sender<usize>>,
+    R: WorkerRuntime,
+    SD: ShutdownSignal,
+{
     type Assignment = WorkAssignment;
     type Completion = mpsc::Sender<usize>;
-    type Error = tokio::task::JoinError;
+    type Error = R::Error;
 
     fn send_work(&self, assignment: Self::Assignment, complete_tx: Self::Completion) {
         self.send_map_assignment(assignment, complete_tx);

@@ -12,7 +12,7 @@ pub struct Reducer<P, S, W, R, SD>
 where
     P: MapReduceProblem,
     S: StateAccess,
-    W: WorkChannel<P::ReduceAssignment, mpsc::Sender<usize>>,
+    W: WorkChannel<P::ReduceAssignment, mpsc::Sender<Result<usize, ()>>>,
     R: WorkerRuntime,
     SD: ShutdownSignal,
 {
@@ -25,7 +25,7 @@ impl<P, S, W, R, SD> Reducer<P, S, W, R, SD>
 where
     P: MapReduceProblem,
     S: StateAccess,
-    W: WorkChannel<P::ReduceAssignment, mpsc::Sender<usize>>,
+    W: WorkChannel<P::ReduceAssignment, mpsc::Sender<Result<usize, ()>>>,
     R: WorkerRuntime,
     SD: ShutdownSignal,
 {
@@ -33,7 +33,7 @@ where
         id: usize,
         state: S,
         shutdown_signal: SD,
-        work_rx: mpsc::Receiver<(P::ReduceAssignment, mpsc::Sender<usize>)>,
+        work_rx: mpsc::Receiver<(P::ReduceAssignment, mpsc::Sender<Result<usize, ()>>)>,
         work_channel: W,
     ) -> Self {
         let handle = R::spawn(move || Self::run_task(id, work_rx, state, shutdown_signal));
@@ -47,7 +47,7 @@ where
 
     async fn run_task(
         id: usize,
-        mut work_rx: mpsc::Receiver<(P::ReduceAssignment, mpsc::Sender<usize>)>,
+        mut work_rx: mpsc::Receiver<(P::ReduceAssignment, mpsc::Sender<Result<usize, ()>>)>,
         state: S,
         shutdown_signal: SD,
     ) {
@@ -66,15 +66,25 @@ where
                                 return;
                             }
 
-                            // Execute problem-specific reduce work
-                            P::reduce_work(&assignment, &state);
+                            // Execute problem-specific reduce work with error handling
+                            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                                P::reduce_work(&assignment, &state);
+                            }));
 
-                            if id.is_multiple_of(2) {
-                                println!("Reducer {} finished", id);
+                            match result {
+                                Ok(_) => {
+                                    if id.is_multiple_of(2) {
+                                        println!("Reducer {} finished", id);
+                                    }
+                                    // Notify orchestrator of success
+                                    let _ = complete_tx.send(Ok(id)).await;
+                                }
+                                Err(_) => {
+                                    eprintln!("❌ Reducer {} panicked during work!", id);
+                                    // Notify orchestrator of failure
+                                    let _ = complete_tx.send(Err(())).await;
+                                }
                             }
-
-                            // Notify orchestrator that this reducer is done
-                            let _ = complete_tx.send(id).await;
                         }
                         None => {
                             // Channel closed, exit
@@ -97,12 +107,12 @@ impl<P, S, W, R, SD> Worker for Reducer<P, S, W, R, SD>
 where
     P: MapReduceProblem,
     S: StateAccess,
-    W: WorkChannel<P::ReduceAssignment, mpsc::Sender<usize>>,
+    W: WorkChannel<P::ReduceAssignment, mpsc::Sender<Result<usize, ()>>>,
     R: WorkerRuntime,
     SD: ShutdownSignal,
 {
     type Assignment = P::ReduceAssignment;
-    type Completion = mpsc::Sender<usize>;
+    type Completion = mpsc::Sender<Result<usize, ()>>;
     type Error = R::Error;
 
     fn send_work(&self, assignment: Self::Assignment, complete_tx: Self::Completion) {

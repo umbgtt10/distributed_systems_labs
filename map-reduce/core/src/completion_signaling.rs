@@ -10,7 +10,10 @@ pub trait CompletionSignaling: Send {
     /// Get the completion token for a specific worker
     fn get_token(&self, worker_id: usize) -> Self::Token;
 
-    /// Wait for the next worker to complete
-    /// Returns the worker_id that completed, or None if all are done
-    fn wait_next(&mut self) -> impl std::future::Future<Output = Option<usize>> + Send;
+    /// Wait for the next worker to complete or fail
+    /// Returns Ok(worker_id) on success, Err(worker_id) on failure
+    /// Returns None if all workers are done
+    fn wait_next(
+        &mut self,
+    ) -> impl std::future::Future<Output = Option<Result<usize, usize>>> + Send;
 }

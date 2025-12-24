@@ -3,21 +3,24 @@ use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::{StreamExt, StreamMap};
 
+/// Completion message: Ok for success, Err for failure
+pub type CompletionMessage = Result<usize, ()>;
+
 /// Channel-based completion signaling using tokio mpsc and StreamMap
 pub struct ChannelCompletionSignaling {
-    completion_txs: Vec<Sender<usize>>,
-    completion_streams: StreamMap<usize, ReceiverStream<usize>>,
+    completion_txs: Vec<Sender<CompletionMessage>>,
+    completion_streams: StreamMap<usize, ReceiverStream<CompletionMessage>>,
 }
 
 impl CompletionSignaling for ChannelCompletionSignaling {
-    type Token = Sender<usize>;
+    type Token = Sender<CompletionMessage>;
 
     fn setup(num_workers: usize) -> Self {
         let mut completion_txs = Vec::new();
         let mut completion_streams = StreamMap::new();
 
         for worker_idx in 0..num_workers {
-            let (tx, rx) = mpsc::channel::<usize>(10);
+            let (tx, rx) = mpsc::channel::<CompletionMessage>(10);
             completion_txs.push(tx);
             completion_streams.insert(worker_idx, ReceiverStream::new(rx));
         }
@@ -32,10 +35,12 @@ impl CompletionSignaling for ChannelCompletionSignaling {
         self.completion_txs[worker_id].clone()
     }
 
-    async fn wait_next(&mut self) -> Option<usize> {
-        self.completion_streams
-            .next()
-            .await
-            .map(|(_stream_idx, worker_id)| worker_id)
+    async fn wait_next(&mut self) -> Option<Result<usize, usize>> {
+        self.completion_streams.next().await.map(|(stream_idx, msg)| {
+            match msg {
+                Ok(worker_id) => Ok(worker_id),
+                Err(_) => Err(stream_idx), // stream_idx is the failed worker_id
+            }
+        })
     }
 }

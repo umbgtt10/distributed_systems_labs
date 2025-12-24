@@ -73,15 +73,33 @@ async fn main() {
     let cancel_token = tokio_util::sync::CancellationToken::new();
     let shutdown_signal = TokenShutdownSignal::new(cancel_token.clone());
 
-    // Create mapper pool
+    // Define mapper type
     type MapperType = Mapper<
         WordSearchProblem,
         LocalStateAccess,
-        MpscWorkChannel<<WordSearchProblem as map_reduce_core::map_reduce_problem::MapReduceProblem>::MapAssignment, tokio::sync::mpsc::Sender<usize>>,
+        MpscWorkChannel<<WordSearchProblem as map_reduce_core::map_reduce_problem::MapReduceProblem>::MapAssignment, tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>>,
         TokioRuntime,
         TokenShutdownSignal,
     >;
 
+    // Create mapper factory
+    let state_for_mapper = state.clone();
+    let shutdown_for_mapper = shutdown_signal.clone();
+    let mapper_factory = move |mapper_id: usize| -> MapperType {
+        let (work_channel, work_rx) = MpscWorkChannel::<
+            <WordSearchProblem as MapReduceProblem>::MapAssignment,
+            tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>
+        >::create_pair(10);
+        Mapper::new(
+            mapper_id,
+            state_for_mapper.clone(),
+            shutdown_for_mapper.clone(),
+            work_rx,
+            work_channel,
+        )
+    };
+
+    // Create initial mapper pool
     let mut mappers: Vec<MapperType> = Vec::new();
     for mapper_id in 0..config.num_mappers {
         let (work_channel, work_rx) = MpscWorkChannel::create_pair(10);
@@ -95,18 +113,39 @@ async fn main() {
         mappers.push(mapper);
     }
 
-    // Create reducer pool
+    // Define reducer type
     type ReducerType = Reducer<
         WordSearchProblem,
         LocalStateAccess,
-        MpscWorkChannel<<WordSearchProblem as map_reduce_core::map_reduce_problem::MapReduceProblem>::ReduceAssignment, tokio::sync::mpsc::Sender<usize>>,
+        MpscWorkChannel<<WordSearchProblem as map_reduce_core::map_reduce_problem::MapReduceProblem>::ReduceAssignment, tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>>,
         TokioRuntime,
         TokenShutdownSignal,
     >;
 
+    // Create reducer factory
+    let state_for_reducer = state.clone();
+    let shutdown_for_reducer = shutdown_signal.clone();
+    let reducer_factory = move |reducer_id: usize| -> ReducerType {
+        let (work_channel, work_rx) = MpscWorkChannel::<
+            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
+            tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>
+        >::create_pair(10);
+        Reducer::new(
+            reducer_id,
+            state_for_reducer.clone(),
+            shutdown_for_reducer.clone(),
+            work_rx,
+            work_channel,
+        )
+    };
+
+    // Create initial reducer pool
     let mut reducers: Vec<ReducerType> = Vec::new();
     for reducer_id in 0..config.num_reducers {
-        let (work_channel, work_rx) = MpscWorkChannel::create_pair(10);
+        let (work_channel, work_rx) = MpscWorkChannel::<
+            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
+            tokio::sync::mpsc::Sender<channel_completion_signaling::CompletionMessage>
+        >::create_pair(10);
         let reducer = Reducer::new(
             reducer_id,
             state.clone(),
@@ -117,9 +156,9 @@ async fn main() {
         reducers.push(reducer);
     }
 
-    // Create work distributors
-    let mapper_distributor = TaskWorkDistributor::<MapperType, ChannelCompletionSignaling>::new();
-    let reducer_distributor = TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling>::new();
+    // Create work distributors with factories
+    let mapper_distributor = TaskWorkDistributor::<MapperType, ChannelCompletionSignaling, _>::new(mapper_factory);
+    let reducer_distributor = TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling, _>::new(reducer_factory);
 
     // Create orchestrator with the distributors
     let orchestrator = Orchestrator::new(mapper_distributor, reducer_distributor);

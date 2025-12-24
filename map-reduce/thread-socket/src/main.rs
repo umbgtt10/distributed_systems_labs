@@ -1,5 +1,4 @@
 mod config;
-mod local_state_access;
 mod mapper;
 mod reducer;
 mod socket_completion_signaling;
@@ -7,7 +6,7 @@ mod socket_work_channel;
 mod thread_runtime;
 
 use config::Config;
-use local_state_access::LocalStateAccess;
+use map_reduce_core::local_state_access::LocalStateAccess;
 use map_reduce_core::completion_signaling::CompletionSignaling;
 use map_reduce_core::default_phase_executor::DefaultPhaseExecutor;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;

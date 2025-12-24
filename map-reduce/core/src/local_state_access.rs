@@ -1,4 +1,4 @@
-use map_reduce_core::state_access::StateAccess;
+use crate::state_access::StateAccess;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -6,6 +6,12 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub struct LocalStateAccess {
     map: Arc<Mutex<HashMap<String, Vec<i32>>>>,
+}
+
+impl Default for LocalStateAccess {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl LocalStateAccess {

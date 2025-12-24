@@ -62,10 +62,10 @@ where
         let mut worker_assignments: HashMap<usize, AssignmentInfo<W::Assignment>> = HashMap::new();
 
         // Distribute initial assignments
-        for worker_id in 0..workers.len().min(assignments.len()) {
+        for (worker_id, worker) in workers.iter().enumerate().take(assignments.len()) {
             let assignment = assignments[assignment_index].clone();
             let completion = get_completion(&signaling, worker_id);
-            workers[worker_id].send_work(assignment.clone(), completion.into());
+            worker.send_work(assignment.clone(), completion.into());
             worker_assignments.insert(
                 worker_id,
                 AssignmentInfo {

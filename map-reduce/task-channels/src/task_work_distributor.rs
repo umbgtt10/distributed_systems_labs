@@ -158,6 +158,10 @@ where
                             let failed_worker = std::mem::replace(&mut workers[worker_id], (self.worker_factory)(worker_id));
                             drop(failed_worker);
 
+                            // Drain any pending completion messages from the old worker
+                            // This is critical to avoid receiving stale completions from failed workers
+                            signaling.drain_worker(worker_id).await;
+
                             // Reassign the same work to the new worker
                             let token = signaling.get_token(worker_id);
                             workers[worker_id].send_work(info.assignment.clone(), token.into());

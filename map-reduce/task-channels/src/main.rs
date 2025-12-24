@@ -45,7 +45,7 @@ async fn main() {
     println!("  - Keys per reducer: {}", config.keys_per_reducer);
     println!("  - Mappers: {}", config.num_mappers);
     println!("  - Reducers: {}", config.num_reducers);
-    if config.mapper_failure_probability > 0 || config.reducer_failure_probability > 0 || config.straggler_probability > 0 || config.mapper_timeout_ms > 0 || config.reducer_timeout_ms > 0 {
+    if config.mapper_failure_probability > 0 || config.reducer_failure_probability > 0 || config.mapper_straggler_probability > 0 || config.reducer_straggler_probability > 0 || config.mapper_timeout_ms > 0 || config.reducer_timeout_ms > 0 {
         println!("\nFault Tolerance:");
         if config.mapper_failure_probability > 0 {
             println!("  - Mapper failure probability: {}%", config.mapper_failure_probability);
@@ -53,8 +53,11 @@ async fn main() {
         if config.reducer_failure_probability > 0 {
             println!("  - Reducer failure probability: {}%", config.reducer_failure_probability);
         }
-        if config.straggler_probability > 0 {
-            println!("  - Straggler probability: {}% (delay up to {}ms)", config.straggler_probability, config.straggler_delay_ms);
+        if config.mapper_straggler_probability > 0 {
+            println!("  - Mapper straggler probability: {}% (delay up to {}ms)", config.mapper_straggler_probability, config.mapper_straggler_delay_ms);
+        }
+        if config.reducer_straggler_probability > 0 {
+            println!("  - Reducer straggler probability: {}% (delay up to {}ms)", config.reducer_straggler_probability, config.reducer_straggler_delay_ms);
         }
         if config.mapper_timeout_ms > 0 {
             println!("  - Mapper timeout: {}ms", config.mapper_timeout_ms);
@@ -104,8 +107,8 @@ async fn main() {
     let state_for_mapper = state.clone();
     let shutdown_for_mapper = shutdown_signal.clone();
     let mapper_failure_prob = config.mapper_failure_probability;
-    let mapper_straggler_prob = config.straggler_probability;
-    let mapper_straggler_delay = config.straggler_delay_ms;
+    let mapper_straggler_prob = config.mapper_straggler_probability;
+    let mapper_straggler_delay = config.mapper_straggler_delay_ms;
     let mapper_factory = move |mapper_id: usize| -> MapperType {
         let (work_channel, work_rx) = MpscWorkChannel::<
             <WordSearchProblem as MapReduceProblem>::MapAssignment,
@@ -134,8 +137,8 @@ async fn main() {
             work_rx,
             work_channel,
             config.mapper_failure_probability,
-            config.straggler_probability,
-            config.straggler_delay_ms,
+            config.mapper_straggler_probability,
+            config.mapper_straggler_delay_ms,
         );
         mappers.push(mapper);
     }
@@ -153,8 +156,8 @@ async fn main() {
     let state_for_reducer = state.clone();
     let shutdown_for_reducer = shutdown_signal.clone();
     let reducer_failure_prob = config.reducer_failure_probability;
-    let reducer_straggler_prob = config.straggler_probability;
-    let reducer_straggler_delay = config.straggler_delay_ms;
+    let reducer_straggler_prob = config.reducer_straggler_probability;
+    let reducer_straggler_delay = config.reducer_straggler_delay_ms;
     let reducer_factory = move |reducer_id: usize| -> ReducerType {
         let (work_channel, work_rx) = MpscWorkChannel::<
             <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
@@ -186,24 +189,22 @@ async fn main() {
             work_rx,
             work_channel,
             config.reducer_failure_probability,
-            config.straggler_probability,
-            config.straggler_delay_ms,
+            config.reducer_straggler_probability,
+            config.reducer_straggler_delay_ms,
         );
         reducers.push(reducer);
     }
 
     // Create work distributors with factories and timeouts
-    let mapper_distributor = if config.mapper_timeout_ms > 0 {
-        TaskWorkDistributor::<MapperType, ChannelCompletionSignaling, _>::with_timeout(mapper_factory, config.mapper_timeout_ms)
-    } else {
-        TaskWorkDistributor::<MapperType, ChannelCompletionSignaling, _>::new(mapper_factory)
-    };
+    let mapper_distributor = TaskWorkDistributor::<MapperType, ChannelCompletionSignaling, _>::with_timeout(
+        mapper_factory,
+        config.mapper_timeout_ms
+    );
 
-    let reducer_distributor = if config.reducer_timeout_ms > 0 {
-        TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling, _>::with_timeout(reducer_factory, config.reducer_timeout_ms)
-    } else {
-        TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling, _>::new(reducer_factory)
-    };
+    let reducer_distributor = TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling, _>::with_timeout(
+        reducer_factory,
+        config.reducer_timeout_ms
+    );
 
     // Create orchestrator with the distributors
     let orchestrator = Orchestrator::new(mapper_distributor, reducer_distributor);

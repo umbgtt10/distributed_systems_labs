@@ -4,27 +4,29 @@ mod local_state_access;
 mod mapper;
 mod mpsc_work_channel;
 mod reducer;
+mod task_mapper_factory;
+mod task_reducer_factory;
 mod task_work_distributor;
 mod tokio_runtime;
 mod types;
 
-use channel_completion_signaling::{ChannelCompletionSignaling, CompletionMessage};
+use channel_completion_signaling::CompletionMessage;
 use config::{generate_random_string, generate_target_word, Config};
 use local_state_access::LocalStateAccess;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
 use map_reduce_core::orchestrator::Orchestrator;
 use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::worker_pool_factory::FaultConfig;
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
 use mapper::Mapper;
 use mpsc_work_channel::MpscWorkChannel;
 use reducer::Reducer;
 use std::time::Instant;
-use task_work_distributor::TaskWorkDistributor;
-use tokio::sync::mpsc::Sender;
+use task_mapper_factory::TaskMapperFactory;
+use task_reducer_factory::TaskReducerFactory;
 use tokio::{signal, spawn};
 use tokio_runtime::{TokenShutdownSignal, TokioRuntime};
 use tokio_util::sync::CancellationToken;
-use types::{MapperType, ReducerType};
 
 #[tokio::main]
 async fn main() {
@@ -117,100 +119,33 @@ async fn main() {
     let cancel_token = CancellationToken::new();
     let shutdown_signal = TokenShutdownSignal::new(cancel_token.clone());
 
-    // Create mapper factory
-    let state_for_mapper = state.clone();
-    let shutdown_for_mapper = shutdown_signal.clone();
-    let mapper_failure_prob = config.mapper_failure_probability;
-    let mapper_straggler_prob = config.mapper_straggler_probability;
-    let mapper_straggler_delay = config.mapper_straggler_delay_ms;
-    let mapper_factory = move |mapper_id: usize| -> MapperType {
-        let (work_channel, work_rx) = MpscWorkChannel::<
-            <WordSearchProblem as MapReduceProblem>::MapAssignment,
-            Sender<CompletionMessage>,
-        >::create_pair(10);
-        Mapper::new(
-            mapper_id,
-            state_for_mapper.clone(),
-            shutdown_for_mapper.clone(),
-            work_rx,
-            work_channel,
-            mapper_failure_prob,
-            mapper_straggler_prob,
-            mapper_straggler_delay,
-        )
+    // Create mapper factory and pool with distributor
+    let mapper_factory_impl =
+        TaskMapperFactory::<WordSearchProblem, _, TokioRuntime, _>::new(state.clone(), shutdown_signal.clone());
+    let mapper_fault_config = FaultConfig {
+        failure_probability: config.mapper_failure_probability,
+        straggler_probability: config.mapper_straggler_probability,
+        straggler_delay_ms: config.mapper_straggler_delay_ms,
     };
-
-    // Create initial mapper pool
-    let mut mappers: Vec<MapperType> = Vec::new();
-    for mapper_id in 0..config.num_mappers {
-        let (work_channel, work_rx) = MpscWorkChannel::create_pair(10);
-        let mapper = Mapper::new(
-            mapper_id,
-            state.clone(),
-            shutdown_signal.clone(),
-            work_rx,
-            work_channel,
-            config.mapper_failure_probability,
-            config.mapper_straggler_probability,
-            config.mapper_straggler_delay_ms,
-        );
-        mappers.push(mapper);
-    }
-
-    // Create reducer factory
-    let state_for_reducer = state.clone();
-    let shutdown_for_reducer = shutdown_signal.clone();
-    let reducer_failure_prob = config.reducer_failure_probability;
-    let reducer_straggler_prob = config.reducer_straggler_probability;
-    let reducer_straggler_delay = config.reducer_straggler_delay_ms;
-    let reducer_factory = move |reducer_id: usize| -> ReducerType {
-        let (work_channel, work_rx) = MpscWorkChannel::<
-            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
-            Sender<CompletionMessage>,
-        >::create_pair(10);
-        Reducer::new(
-            reducer_id,
-            state_for_reducer.clone(),
-            shutdown_for_reducer.clone(),
-            work_rx,
-            work_channel,
-            reducer_failure_prob,
-            reducer_straggler_prob,
-            reducer_straggler_delay,
-        )
-    };
-
-    // Create initial reducer pool
-    let mut reducers: Vec<ReducerType> = Vec::new();
-    for reducer_id in 0..config.num_reducers {
-        let (work_channel, work_rx) = MpscWorkChannel::<
-            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
-            Sender<CompletionMessage>,
-        >::create_pair(10);
-        let reducer = Reducer::new(
-            reducer_id,
-            state.clone(),
-            shutdown_signal.clone(),
-            work_rx,
-            work_channel,
-            config.reducer_failure_probability,
-            config.reducer_straggler_probability,
-            config.reducer_straggler_delay_ms,
-        );
-        reducers.push(reducer);
-    }
-
-    // Create work distributors with factories and timeouts
-    let mapper_distributor = TaskWorkDistributor::<MapperType, ChannelCompletionSignaling, _>::new(
-        mapper_factory,
+    let (mappers, mapper_distributor) = mapper_factory_impl.create_pool_and_distributor(
+        config.num_mappers,
+        mapper_fault_config,
         config.mapper_timeout_ms,
     );
 
-    let reducer_distributor =
-        TaskWorkDistributor::<ReducerType, ChannelCompletionSignaling, _>::new(
-            reducer_factory,
-            config.reducer_timeout_ms,
-        );
+    // Create reducer factory and pool with distributor
+    let reducer_factory_impl =
+        TaskReducerFactory::<WordSearchProblem, _, TokioRuntime, _>::new(state.clone(), shutdown_signal.clone());
+    let reducer_fault_config = FaultConfig {
+        failure_probability: config.reducer_failure_probability,
+        straggler_probability: config.reducer_straggler_probability,
+        straggler_delay_ms: config.reducer_straggler_delay_ms,
+    };
+    let (reducers, reducer_distributor) = reducer_factory_impl.create_pool_and_distributor(
+        config.num_reducers,
+        reducer_fault_config,
+        config.reducer_timeout_ms,
+    );
 
     // Create orchestrator with the distributors
     let orchestrator = Orchestrator::new(mapper_distributor, reducer_distributor);

@@ -3,6 +3,8 @@ mod local_state_access;
 mod mapper;
 mod reducer;
 mod socket_completion_signaling;
+mod socket_mapper_factory;
+mod socket_reducer_factory;
 mod socket_work_channel;
 mod socket_work_distributor;
 mod thread_runtime;
@@ -12,15 +14,16 @@ use config::{generate_random_string, generate_target_word, Config};
 use local_state_access::LocalStateAccess;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
 use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::worker_pool_factory::FaultConfig;
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
 use mapper::Mapper;
 use reducer::Reducer;
 use socket_completion_signaling::{CompletionSender, SocketCompletionSignaling};
+use socket_mapper_factory::SocketMapperFactory;
+use socket_reducer_factory::SocketReducerFactory;
 use socket_work_channel::SocketWorkChannel;
-use socket_work_distributor::SocketWorkDistributor;
 use std::time::Instant;
 use thread_runtime::{AtomicShutdownSignal, ThreadRuntime};
-use types::{MapperType, ReducerType};
 
 fn main() {
     let start_time = Instant::now();
@@ -123,95 +126,39 @@ fn main() {
     let reducer_signaling =
         SocketCompletionSignaling::new(config.completion_base_port + 100, config.num_reducers);
 
-    // Create mappers
-    let mut mapper_port = config.mapper_base_port;
-    let mut mappers = Vec::new();
-    for mapper_id in 0..config.num_mappers {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(mapper_port);
-        mapper_port += 1;
-        let mapper = Mapper::new(
-            mapper_id,
-            state.clone(),
-            shutdown_signal.clone(),
-            work_rx,
-            work_channel,
-            config.mapper_failure_probability,
-            config.mapper_straggler_probability,
-            config.mapper_straggler_delay_ms,
-        );
-        mappers.push(mapper);
-    }
-
-    // Create mapper factory
-    let state_for_mapper = state.clone();
-    let shutdown_for_mapper = shutdown_signal.clone();
-    let mut next_mapper_port = mapper_port;
-    let mapper_failure_prob = config.mapper_failure_probability;
-    let mapper_straggler_prob = config.mapper_straggler_probability;
-    let mapper_straggler_delay = config.mapper_straggler_delay_ms;
-    let mapper_factory = move |mapper_id: usize| -> MapperType {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(next_mapper_port);
-        next_mapper_port += 1;
-        Mapper::new(
-            mapper_id,
-            state_for_mapper.clone(),
-            shutdown_for_mapper.clone(),
-            work_rx,
-            work_channel,
-            mapper_failure_prob,
-            mapper_straggler_prob,
-            mapper_straggler_delay,
-        )
+    // Create mapper factory and pool with distributor
+    let mapper_factory_impl = SocketMapperFactory::<WordSearchProblem, _, ThreadRuntime, _>::new(
+        state.clone(),
+        shutdown_signal.clone(),
+        config.mapper_base_port,
+    );
+    let mapper_fault_config = FaultConfig {
+        failure_probability: config.mapper_failure_probability,
+        straggler_probability: config.mapper_straggler_probability,
+        straggler_delay_ms: config.mapper_straggler_delay_ms,
     };
+    let (mappers, mut mapper_distributor) = mapper_factory_impl.create_pool_and_distributor(
+        config.num_mappers,
+        mapper_fault_config,
+        config.mapper_timeout_ms,
+    );
 
-    // Create mapper distributor
-    let mut mapper_distributor =
-        SocketWorkDistributor::with_timeout(mapper_factory, config.mapper_timeout_ms);
-
-    // Create reducers
-    let mut reducer_port = config.reducer_base_port;
-    let mut reducers = Vec::new();
-    for reducer_id in 0..config.num_reducers {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(reducer_port);
-        reducer_port += 1;
-        let reducer = Reducer::new(
-            reducer_id,
-            state.clone(),
-            shutdown_signal.clone(),
-            work_rx,
-            work_channel,
-            config.reducer_failure_probability,
-            config.reducer_straggler_probability,
-            config.reducer_straggler_delay_ms,
-        );
-        reducers.push(reducer);
-    }
-
-    // Create reducer factory
-    let state_for_reducer = state.clone();
-    let shutdown_for_reducer = shutdown_signal.clone();
-    let mut next_reducer_port = reducer_port;
-    let reducer_failure_prob = config.reducer_failure_probability;
-    let reducer_straggler_prob = config.reducer_straggler_probability;
-    let reducer_straggler_delay = config.reducer_straggler_delay_ms;
-    let reducer_factory = move |reducer_id: usize| -> ReducerType {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(next_reducer_port);
-        next_reducer_port += 1;
-        Reducer::new(
-            reducer_id,
-            state_for_reducer.clone(),
-            shutdown_for_reducer.clone(),
-            work_rx,
-            work_channel,
-            reducer_failure_prob,
-            reducer_straggler_prob,
-            reducer_straggler_delay,
-        )
+    // Create reducer factory and pool with distributor
+    let reducer_factory_impl = SocketReducerFactory::<WordSearchProblem, _, ThreadRuntime, _>::new(
+        state.clone(),
+        shutdown_signal.clone(),
+        config.reducer_base_port,
+    );
+    let reducer_fault_config = FaultConfig {
+        failure_probability: config.reducer_failure_probability,
+        straggler_probability: config.reducer_straggler_probability,
+        straggler_delay_ms: config.reducer_straggler_delay_ms,
     };
-
-    // Create reducer distributor
-    let mut reducer_distributor =
-        SocketWorkDistributor::with_timeout(reducer_factory, config.reducer_timeout_ms);
+    let (reducers, mut reducer_distributor) = reducer_factory_impl.create_pool_and_distributor(
+        config.num_reducers,
+        reducer_fault_config,
+        config.reducer_timeout_ms,
+    );
 
     // Run map phase
     println!("\n=== MAP PHASE ===");

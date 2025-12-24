@@ -6,4 +6,5 @@ pub mod state_access;
 pub mod work_channel;
 pub mod work_distributor;
 pub mod worker;
+pub mod worker_pool_factory;
 pub mod worker_runtime;

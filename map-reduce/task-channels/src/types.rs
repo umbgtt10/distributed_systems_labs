@@ -4,10 +4,10 @@ use crate::MapReduceProblem;
 use crate::Mapper;
 use crate::MpscWorkChannel;
 use crate::Reducer;
-use crate::Sender;
 use crate::TokenShutdownSignal;
 use crate::TokioRuntime;
 use crate::WordSearchProblem;
+use tokio::sync::mpsc::Sender;
 
 pub type MapperType = Mapper<
     WordSearchProblem,

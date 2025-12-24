@@ -12,3 +12,17 @@ pub trait Worker: Send {
     /// Wait for the worker to shut down
     fn wait(self) -> impl std::future::Future<Output = Result<(), Self::Error>> + Send;
 }
+
+/// Trait for creating workers
+pub trait WorkerFactory<W>: Send {
+    fn create_worker(&mut self, id: usize) -> W;
+}
+
+impl<F, W> WorkerFactory<W> for F
+where
+    F: FnMut(usize) -> W + Send,
+{
+    fn create_worker(&mut self, id: usize) -> W {
+        (self)(id)
+    }
+}

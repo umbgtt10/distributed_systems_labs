@@ -5,6 +5,7 @@ use tokio::task::{self, JoinError, JoinHandle};
 use tokio_util::sync::CancellationToken;
 
 /// Tokio task-based runtime
+#[derive(Clone, Copy)]
 pub struct TokioRuntime;
 
 impl WorkerRuntime for TokioRuntime {

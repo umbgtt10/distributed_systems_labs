@@ -6,19 +6,17 @@ mod reducer;
 mod tokio_runtime;
 
 use channel_completion_signaling::ChannelCompletionSignaling;
-use channel_wrappers::{ChannelCompletionSender, ChannelWorkReceiver};
+use channel_wrappers::ChannelCompletionSender;
 use map_reduce_core::config::Config;
 use map_reduce_core::local_state_access::LocalStateAccess;
-use map_reduce_core::completion_signaling::CompletionSignaling;
-use map_reduce_core::default_phase_executor::DefaultPhaseExecutor;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
 use map_reduce_core::phase_executor::PhaseExecutor;
 use map_reduce_core::state_access::StateAccess;
-use map_reduce_core::utils::{generate_random_string, generate_target_word};
+use map_reduce_core::utils::{generate_test_data, initialize_phase};
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
-use mapper::Mapper;
+use mapper::{Mapper, MapperFactory};
 use mpsc_work_channel::MpscWorkChannel;
-use reducer::Reducer;
+use reducer::{Reducer, ReducerFactory};
 use std::time::Instant;
 use tokio::{signal, spawn};
 use tokio_runtime::{TokenShutdownSignal, TokioRuntime};
@@ -32,71 +30,9 @@ async fn main() {
     let config = Config::load("config.json").expect("Failed to load config.json");
 
     println!("=== MAP-REDUCE WORD SEARCH ===");
-    println!("Configuration:");
-    println!("  - Strings: {}", config.num_strings);
-    println!("  - Max string length: {}", config.max_string_length);
-    println!("  - Target words: {}", config.num_target_words);
-    println!("  - Target word length: {}", config.target_word_length);
-    println!("  - Partition size: {}", config.partition_size);
-    println!("  - Keys per reducer: {}", config.keys_per_reducer);
-    println!("  - Mappers: {}", config.num_mappers);
-    println!("  - Reducers: {}", config.num_reducers);
-    if config.mapper_failure_probability > 0
-        || config.reducer_failure_probability > 0
-        || config.mapper_straggler_probability > 0
-        || config.reducer_straggler_probability > 0
-        || config.mapper_timeout_ms > 0
-        || config.reducer_timeout_ms > 0
-    {
-        println!("\nFault Tolerance:");
-        if config.mapper_failure_probability > 0 {
-            println!(
-                "  - Mapper failure probability: {}%",
-                config.mapper_failure_probability
-            );
-        }
-        if config.reducer_failure_probability > 0 {
-            println!(
-                "  - Reducer failure probability: {}%",
-                config.reducer_failure_probability
-            );
-        }
-        if config.mapper_straggler_probability > 0 {
-            println!(
-                "  - Mapper straggler probability: {}% (delay up to {}ms)",
-                config.mapper_straggler_probability, config.mapper_straggler_delay_ms
-            );
-        }
-        if config.reducer_straggler_probability > 0 {
-            println!(
-                "  - Reducer straggler probability: {}% (delay up to {}ms)",
-                config.reducer_straggler_probability, config.reducer_straggler_delay_ms
-            );
-        }
-        if config.mapper_timeout_ms > 0 {
-            println!("  - Mapper timeout: {}ms", config.mapper_timeout_ms);
-        }
-        if config.reducer_timeout_ms > 0 {
-            println!("  - Reducer timeout: {}ms", config.reducer_timeout_ms);
-        }
-    }
-    println!("\nGenerating data...");
+    config.print_summary();
 
-    let mut rng = rand::rng();
-
-    // Generate random strings
-    let data: Vec<String> = (0..config.num_strings)
-        .map(|_| generate_random_string(&mut rng, config.max_string_length))
-        .collect();
-
-    println!("Generated {} strings", data.len());
-
-    // Generate random target words
-    let targets: Vec<String> = (0..config.num_target_words)
-        .map(|_| generate_target_word(&mut rng, config.target_word_length))
-        .collect();
-
-    println!("Generated {} target words", targets.len());
+    let (data, targets) = generate_test_data(&config);
 
     // Create state access layer
     let state = LocalStateAccess::new();
@@ -121,46 +57,20 @@ async fn main() {
     >;
 
     // Create mapper factory
-    let state_for_mapper = state.clone();
-    let shutdown_for_mapper = shutdown_signal.clone();
-    let mapper_failure_prob = config.mapper_failure_probability;
-    let mapper_straggler_prob = config.mapper_straggler_probability;
-    let mapper_straggler_delay = config.mapper_straggler_delay_ms;
-    let mapper_factory = move |mapper_id: usize| -> MapperType {
-        let (work_channel, work_rx) = MpscWorkChannel::<
-            <WordSearchProblem as MapReduceProblem>::MapAssignment,
-            ChannelCompletionSender,
-        >::create_pair(10);
-        let wrapped_rx = ChannelWorkReceiver { rx: work_rx };
-        Mapper::new(
-            mapper_id,
-            state_for_mapper.clone(),
-            shutdown_for_mapper.clone(),
-            wrapped_rx,
-            work_channel,
-            mapper_failure_prob,
-            mapper_straggler_prob,
-            mapper_straggler_delay,
-        )
-    };
+    let mapper_factory = MapperFactory::<WordSearchProblem, LocalStateAccess, TokioRuntime, TokenShutdownSignal>::new(
+        state.clone(),
+        shutdown_signal.clone(),
+        config.mapper_failure_probability,
+        config.mapper_straggler_probability,
+        config.mapper_straggler_delay_ms,
+    );
 
     // Create initial mapper pool
-    let mut mappers: Vec<MapperType> = Vec::new();
-    for mapper_id in 0..config.num_mappers {
-        let (work_channel, work_rx) = MpscWorkChannel::create_pair(10);
-        let wrapped_rx = ChannelWorkReceiver { rx: work_rx };
-        let mapper = Mapper::new(
-            mapper_id,
-            state.clone(),
-            shutdown_signal.clone(),
-            wrapped_rx,
-            work_channel,
-            config.mapper_failure_probability,
-            config.mapper_straggler_probability,
-            config.mapper_straggler_delay_ms,
-        );
-        mappers.push(mapper);
-    }
+    let (mappers, mut mapper_executor) = initialize_phase::<MapperType, ChannelCompletionSignaling, _>(
+        config.num_mappers,
+        mapper_factory,
+        config.mapper_timeout_ms,
+    );
 
     // Define reducer type
     type ReducerType = Reducer<
@@ -175,61 +85,20 @@ async fn main() {
     >;
 
     // Create reducer factory
-    let state_for_reducer = state.clone();
-    let shutdown_for_reducer = shutdown_signal.clone();
-    let reducer_failure_prob = config.reducer_failure_probability;
-    let reducer_straggler_prob = config.reducer_straggler_probability;
-    let reducer_straggler_delay = config.reducer_straggler_delay_ms;
-    let reducer_factory = move |reducer_id: usize| -> ReducerType {
-        let (work_channel, work_rx) = MpscWorkChannel::<
-            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
-            ChannelCompletionSender,
-        >::create_pair(10);
-        let wrapped_rx = ChannelWorkReceiver { rx: work_rx };
-        Reducer::new(
-            reducer_id,
-            state_for_reducer.clone(),
-            shutdown_for_reducer.clone(),
-            wrapped_rx,
-            work_channel,
-            reducer_failure_prob,
-            reducer_straggler_prob,
-            reducer_straggler_delay,
-        )
-    };
-
-    // Create initial reducer pool
-    let mut reducers: Vec<ReducerType> = Vec::new();
-    for reducer_id in 0..config.num_reducers {
-        let (work_channel, work_rx) = MpscWorkChannel::<
-            <WordSearchProblem as MapReduceProblem>::ReduceAssignment,
-            ChannelCompletionSender,
-        >::create_pair(10);
-        let wrapped_rx = ChannelWorkReceiver { rx: work_rx };
-        let reducer = Reducer::new(
-            reducer_id,
-            state.clone(),
-            shutdown_signal.clone(),
-            wrapped_rx,
-            work_channel,
-            config.reducer_failure_probability,
-            config.reducer_straggler_probability,
-            config.reducer_straggler_delay_ms,
-        );
-        reducers.push(reducer);
-    }
-
-    // Create phase executors with factories and timeouts
-    let mut mapper_executor = DefaultPhaseExecutor::<MapperType, ChannelCompletionSignaling, _>::new(
-        mapper_factory,
-        config.mapper_timeout_ms,
+    let reducer_factory = ReducerFactory::<WordSearchProblem, LocalStateAccess, TokioRuntime, TokenShutdownSignal>::new(
+        state.clone(),
+        shutdown_signal.clone(),
+        config.reducer_failure_probability,
+        config.reducer_straggler_probability,
+        config.reducer_straggler_delay_ms,
     );
 
-    let mut reducer_executor =
-        DefaultPhaseExecutor::<ReducerType, ChannelCompletionSignaling, _>::new(
-            reducer_factory,
-            config.reducer_timeout_ms,
-        );
+    // Create initial reducer pool
+    let (reducers, mut reducer_executor) = initialize_phase::<ReducerType, ChannelCompletionSignaling, _>(
+        config.num_reducers,
+        reducer_factory,
+        config.reducer_timeout_ms,
+    );
 
     // Setup Ctrl+C handler
     let ctrl_c_token = cancel_token.clone();

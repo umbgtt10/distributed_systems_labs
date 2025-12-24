@@ -5,6 +5,7 @@ use std::sync::Arc;
 use std::thread::{self, JoinHandle};
 
 /// Thread-based runtime
+#[derive(Clone, Copy)]
 pub struct ThreadRuntime;
 
 impl WorkerRuntime for ThreadRuntime {

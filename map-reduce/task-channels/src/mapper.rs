@@ -1,5 +1,10 @@
 use crate::channel_wrappers::{ChannelCompletionSender, ChannelWorkReceiver};
+use crate::mpsc_work_channel::MpscWorkChannel;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
+use map_reduce_core::shutdown_signal::ShutdownSignal;
+use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::worker::WorkerFactory;
+use map_reduce_core::worker_runtime::WorkerRuntime;
 
 pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     P,
@@ -10,3 +15,77 @@ pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     ChannelWorkReceiver<<P as MapReduceProblem>::MapAssignment, ChannelCompletionSender>,
     ChannelCompletionSender,
 >;
+
+pub struct MapperFactory<P, S, R, SD> {
+    state: S,
+    shutdown: SD,
+    failure_prob: u32,
+    straggler_prob: u32,
+    straggler_delay: u64,
+    _phantom: std::marker::PhantomData<(P, R)>,
+}
+
+impl<P, S, R, SD> MapperFactory<P, S, R, SD> {
+    pub fn new(
+        state: S,
+        shutdown: SD,
+        failure_prob: u32,
+        straggler_prob: u32,
+        straggler_delay: u64,
+    ) -> Self {
+        Self {
+            state,
+            shutdown,
+            failure_prob,
+            straggler_prob,
+            straggler_delay,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<P, S, R, SD>
+    WorkerFactory<
+        Mapper<
+            P,
+            S,
+            MpscWorkChannel<<P as MapReduceProblem>::MapAssignment, ChannelCompletionSender>,
+            R,
+            SD,
+        >,
+    > for MapperFactory<P, S, R, SD>
+where
+    P: MapReduceProblem + 'static,
+    S: StateAccess + Clone + Send + Sync + 'static,
+    R: WorkerRuntime + Clone + Send + Sync + 'static,
+    SD: ShutdownSignal + Clone + Send + Sync + 'static,
+    P::MapAssignment: Send + Clone + 'static,
+{
+    fn create_worker(
+        &mut self,
+        id: usize,
+    ) -> Mapper<
+        P,
+        S,
+        MpscWorkChannel<<P as MapReduceProblem>::MapAssignment, ChannelCompletionSender>,
+        R,
+        SD,
+    > {
+        let (work_channel, work_rx) = MpscWorkChannel::<
+            <P as MapReduceProblem>::MapAssignment,
+            ChannelCompletionSender,
+        >::create_pair(10);
+        let wrapped_rx = ChannelWorkReceiver { rx: work_rx };
+
+        map_reduce_core::mapper::Mapper::new(
+            id,
+            self.state.clone(),
+            self.shutdown.clone(),
+            wrapped_rx,
+            work_channel,
+            self.failure_prob,
+            self.straggler_prob,
+            self.straggler_delay,
+        )
+    }
+}

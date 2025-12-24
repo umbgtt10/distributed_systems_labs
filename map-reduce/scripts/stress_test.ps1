@@ -8,7 +8,7 @@ Write-Host "Starting stress test..." -ForegroundColor Cyan
 
 foreach ($project in $projects) {
     $projectDir = Join-Path $rootDir $project
-    Write-Host "`nTesting Project: $project" -ForegroundColor Yellow
+    Write-Host "`nBuilding Project: $project" -ForegroundColor Yellow
     Write-Host "Directory: $projectDir"
 
     Push-Location $projectDir
@@ -21,6 +21,14 @@ foreach ($project in $projects) {
         Pop-Location
         exit 1
     }
+    Pop-Location
+}
+
+foreach ($project in $projects) {
+    $projectDir = Join-Path $rootDir $project
+    Write-Host "`nTesting Project: $project" -ForegroundColor Yellow
+
+    Push-Location $projectDir
 
     for ($i = 1; $i -le $iterations; $i++) {
         Write-Host "[$project] Run $i of $iterations ... " -NoNewline

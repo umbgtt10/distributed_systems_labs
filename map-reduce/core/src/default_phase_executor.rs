@@ -1,7 +1,7 @@
 use crate::completion_signaling::CompletionSignaling;
 use crate::phase_executor::PhaseExecutor;
 use crate::shutdown_signal::ShutdownSignal;
-use crate::worker::Worker;
+use crate::worker::{Worker, WorkerFactory};
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::mem;
@@ -20,7 +20,7 @@ pub struct DefaultPhaseExecutor<W, CS, F>
 where
     W: Worker,
     CS: CompletionSignaling,
-    F: FnMut(usize) -> W + Send,
+    F: WorkerFactory<W>,
 {
     worker_factory: F,
     timeout: Option<Duration>,
@@ -31,7 +31,7 @@ impl<W, CS, F> DefaultPhaseExecutor<W, CS, F>
 where
     W: Worker,
     CS: CompletionSignaling,
-    F: FnMut(usize) -> W + Send,
+    F: WorkerFactory<W>,
 {
     pub fn new(worker_factory: F, timeout_ms: u64) -> Self {
         Self {
@@ -52,7 +52,7 @@ where
     W: Worker,
     CS: CompletionSignaling,
     W::Completion: From<CS::Token>,
-    F: FnMut(usize) -> W + Send,
+    F: WorkerFactory<W>,
 {
     type Worker = W;
 
@@ -119,8 +119,10 @@ where
                         );
 
                         // Replace worker
-                        let failed_worker =
-                            mem::replace(&mut workers[worker_id], (self.worker_factory)(worker_id));
+                        let failed_worker = mem::replace(
+                            &mut workers[worker_id],
+                            self.worker_factory.create_worker(worker_id),
+                        );
                         drop(failed_worker);
 
                         // Drain pending messages and replace signaling token
@@ -189,7 +191,7 @@ where
                                     // Replace worker
                                     let failed_worker = mem::replace(
                                         &mut workers[worker_id],
-                                        (self.worker_factory)(worker_id),
+                                        self.worker_factory.create_worker(worker_id),
                                     );
                                     drop(failed_worker);
 

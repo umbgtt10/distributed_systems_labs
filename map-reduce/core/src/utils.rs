@@ -1,3 +1,7 @@
+use crate::completion_signaling::CompletionSignaling;
+use crate::config::Config;
+use crate::default_phase_executor::DefaultPhaseExecutor;
+use crate::worker::{Worker, WorkerFactory};
 use rand::Rng;
 
 pub fn generate_random_string(rng: &mut impl Rng, max_length: usize) -> String {
@@ -17,4 +21,45 @@ pub fn generate_target_word(rng: &mut impl Rng, length: usize) -> String {
             c as char
         })
         .collect()
+}
+
+pub fn generate_test_data(config: &Config) -> (Vec<String>, Vec<String>) {
+    println!("\nGenerating data...");
+    let mut rng = rand::rng();
+
+    // Generate random strings
+    let data: Vec<String> = (0..config.num_strings)
+        .map(|_| generate_random_string(&mut rng, config.max_string_length))
+        .collect();
+
+    println!("Generated {} strings", data.len());
+
+    // Generate random target words
+    let targets: Vec<String> = (0..config.num_target_words)
+        .map(|_| generate_target_word(&mut rng, config.target_word_length))
+        .collect();
+
+    println!("Generated {} target words", targets.len());
+
+    (data, targets)
+}
+
+pub fn initialize_phase<W, S, F>(
+    num_workers: usize,
+    mut factory: F,
+    timeout_ms: u64,
+) -> (Vec<W>, DefaultPhaseExecutor<W, S, F>)
+where
+    W: Worker,
+    S: CompletionSignaling,
+    F: WorkerFactory<W>,
+{
+    let mut workers = Vec::with_capacity(num_workers);
+    for id in 0..num_workers {
+        workers.push(factory.create_worker(id));
+    }
+
+    let executor = DefaultPhaseExecutor::new(factory, timeout_ms);
+
+    (workers, executor)
 }

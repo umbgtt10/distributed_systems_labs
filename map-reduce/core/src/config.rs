@@ -47,4 +47,56 @@ impl Config {
         let config: Config = serde_json::from_str(&contents)?;
         Ok(config)
     }
+
+    pub fn print_summary(&self) {
+        println!("Configuration:");
+        println!("  - Strings: {}", self.num_strings);
+        println!("  - Max string length: {}", self.max_string_length);
+        println!("  - Target words: {}", self.num_target_words);
+        println!("  - Target word length: {}", self.target_word_length);
+        println!("  - Partition size: {}", self.partition_size);
+        println!("  - Keys per reducer: {}", self.keys_per_reducer);
+        println!("  - Mappers: {}", self.num_mappers);
+        println!("  - Reducers: {}", self.num_reducers);
+
+        if self.mapper_failure_probability > 0
+            || self.reducer_failure_probability > 0
+            || self.mapper_straggler_probability > 0
+            || self.reducer_straggler_probability > 0
+            || self.mapper_timeout_ms > 0
+            || self.reducer_timeout_ms > 0
+        {
+            println!("\nFault Tolerance:");
+            if self.mapper_failure_probability > 0 {
+                println!(
+                    "  - Mapper failure probability: {}%",
+                    self.mapper_failure_probability
+                );
+            }
+            if self.reducer_failure_probability > 0 {
+                println!(
+                    "  - Reducer failure probability: {}%",
+                    self.reducer_failure_probability
+                );
+            }
+            if self.mapper_straggler_probability > 0 {
+                println!(
+                    "  - Mapper straggler probability: {}% (delay up to {}ms)",
+                    self.mapper_straggler_probability, self.mapper_straggler_delay_ms
+                );
+            }
+            if self.reducer_straggler_probability > 0 {
+                println!(
+                    "  - Reducer straggler probability: {}% (delay up to {}ms)",
+                    self.reducer_straggler_probability, self.reducer_straggler_delay_ms
+                );
+            }
+            if self.mapper_timeout_ms > 0 {
+                println!("  - Mapper timeout: {}ms", self.mapper_timeout_ms);
+            }
+            if self.reducer_timeout_ms > 0 {
+                println!("  - Reducer timeout: {}ms", self.reducer_timeout_ms);
+            }
+        }
+    }
 }

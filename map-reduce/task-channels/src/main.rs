@@ -4,21 +4,20 @@ mod local_state_access;
 mod mapper;
 mod mpsc_work_channel;
 mod reducer;
-mod task_work_distributor;
 mod tokio_runtime;
 
 use channel_completion_signaling::{ChannelCompletionSignaling, CompletionMessage};
 use config::{generate_random_string, generate_target_word, Config};
 use local_state_access::LocalStateAccess;
+use map_reduce_core::completion_signaling::CompletionSignaling;
+use map_reduce_core::default_phase_executor::DefaultPhaseExecutor;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
-use map_reduce_core::phase_executor::PhaseExecutor;
 use map_reduce_core::state_access::StateAccess;
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
 use mapper::Mapper;
 use mpsc_work_channel::MpscWorkChannel;
 use reducer::Reducer;
 use std::time::Instant;
-use task_work_distributor::TaskPhaseExecutor;
 use tokio::sync::mpsc::Sender;
 use tokio::{signal, spawn};
 use tokio_runtime::{TokenShutdownSignal, TokioRuntime};
@@ -223,13 +222,13 @@ async fn main() {
     }
 
     // Create phase executors with factories and timeouts
-    let mut mapper_executor = TaskPhaseExecutor::<MapperType, ChannelCompletionSignaling, _>::new(
+    let mut mapper_executor = DefaultPhaseExecutor::<MapperType, ChannelCompletionSignaling, _>::new(
         mapper_factory,
         config.mapper_timeout_ms,
     );
 
     let mut reducer_executor =
-        TaskPhaseExecutor::<ReducerType, ChannelCompletionSignaling, _>::new(
+        DefaultPhaseExecutor::<ReducerType, ChannelCompletionSignaling, _>::new(
             reducer_factory,
             config.reducer_timeout_ms,
         );
@@ -252,7 +251,12 @@ async fn main() {
     println!("Distributing data to {} mappers...", config.num_mappers);
     let map_assignments =
         WordSearchProblem::create_map_assignments(data, context.clone(), config.partition_size);
-    mapper_executor.execute(mappers, map_assignments).await;
+    let mapper_signaling = ChannelCompletionSignaling::setup(mappers.len());
+    let mappers = mapper_executor
+        .execute(mappers, map_assignments, mapper_signaling, |signaling, worker_id| {
+            signaling.get_token(worker_id)
+        })
+        .await;
     println!("All mappers completed!");
 
     // Execute reduce phase
@@ -260,8 +264,28 @@ async fn main() {
     println!("Starting {} reducers...", config.num_reducers);
     let reduce_assignments =
         WordSearchProblem::create_reduce_assignments(context, config.keys_per_reducer);
-    reducer_executor.execute(reducers, reduce_assignments).await;
+    let reducer_signaling = ChannelCompletionSignaling::setup(reducers.len());
+    let reducers = reducer_executor
+        .execute(
+            reducers,
+            reduce_assignments,
+            reducer_signaling,
+            |signaling, worker_id| signaling.get_token(worker_id),
+        )
+        .await;
     println!("All reducers completed!");
+
+    // Wait for all workers to shut down
+    for (idx, worker) in mappers.into_iter().enumerate() {
+        if let Err(e) = worker.wait().await {
+            eprintln!("Mapper {} shutdown failed: {}", idx, e);
+        }
+    }
+    for (idx, worker) in reducers.into_iter().enumerate() {
+        if let Err(e) = worker.wait().await {
+            eprintln!("Reducer {} shutdown failed: {}", idx, e);
+        }
+    }
 
     // Extract final results from state
     let final_results_map = state.get_map();

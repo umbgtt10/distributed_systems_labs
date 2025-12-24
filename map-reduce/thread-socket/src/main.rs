@@ -4,11 +4,12 @@ mod mapper;
 mod reducer;
 mod socket_completion_signaling;
 mod socket_work_channel;
-mod socket_work_distributor;
 mod thread_runtime;
 
 use config::{generate_random_string, generate_target_word, Config};
 use local_state_access::LocalStateAccess;
+use map_reduce_core::completion_signaling::CompletionSignaling;
+use map_reduce_core::default_phase_executor::DefaultPhaseExecutor;
 use map_reduce_core::map_reduce_problem::MapReduceProblem;
 use map_reduce_core::state_access::StateAccess;
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
@@ -16,11 +17,11 @@ use mapper::Mapper;
 use reducer::Reducer;
 use socket_completion_signaling::{CompletionSender, SocketCompletionSignaling};
 use socket_work_channel::SocketWorkChannel;
-use socket_work_distributor::SocketPhaseExecutor;
 use std::time::Instant;
 use thread_runtime::{AtomicShutdownSignal, ThreadRuntime};
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let start_time = Instant::now();
 
     // Load configuration
@@ -115,12 +116,6 @@ fn main() {
     })
     .expect("Error setting Ctrl-C handler");
 
-    // Create completion signaling
-    let mapper_signaling =
-        SocketCompletionSignaling::new(config.completion_base_port, config.num_mappers);
-    let reducer_signaling =
-        SocketCompletionSignaling::new(config.completion_base_port + 100, config.num_reducers);
-
     // Define types
     type MapperType = Mapper<
         WordSearchProblem,
@@ -142,11 +137,9 @@ fn main() {
     >;
 
     // Create mappers
-    let mut mapper_port = config.mapper_base_port;
     let mut mappers = Vec::new();
     for mapper_id in 0..config.num_mappers {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(mapper_port);
-        mapper_port += 1;
+        let (work_channel, work_rx) = SocketWorkChannel::create_pair(0);
         let mapper = Mapper::new(
             mapper_id,
             state.clone(),
@@ -163,13 +156,11 @@ fn main() {
     // Create mapper factory
     let state_for_mapper = state.clone();
     let shutdown_for_mapper = shutdown_signal.clone();
-    let mut next_mapper_port = mapper_port;
     let mapper_failure_prob = config.mapper_failure_probability;
     let mapper_straggler_prob = config.mapper_straggler_probability;
     let mapper_straggler_delay = config.mapper_straggler_delay_ms;
     let mapper_factory = move |mapper_id: usize| -> MapperType {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(next_mapper_port);
-        next_mapper_port += 1;
+        let (work_channel, work_rx) = SocketWorkChannel::create_pair(0);
         Mapper::new(
             mapper_id,
             state_for_mapper.clone(),
@@ -184,14 +175,15 @@ fn main() {
 
     // Create mapper executor
     let mut mapper_executor =
-        SocketPhaseExecutor::with_timeout(mapper_factory, config.mapper_timeout_ms);
+        DefaultPhaseExecutor::<MapperType, SocketCompletionSignaling, _>::new(
+            mapper_factory,
+            config.mapper_timeout_ms,
+        );
 
     // Create reducers
-    let mut reducer_port = config.reducer_base_port;
     let mut reducers = Vec::new();
     for reducer_id in 0..config.num_reducers {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(reducer_port);
-        reducer_port += 1;
+        let (work_channel, work_rx) = SocketWorkChannel::create_pair(0);
         let reducer = Reducer::new(
             reducer_id,
             state.clone(),
@@ -208,13 +200,11 @@ fn main() {
     // Create reducer factory
     let state_for_reducer = state.clone();
     let shutdown_for_reducer = shutdown_signal.clone();
-    let mut next_reducer_port = reducer_port;
     let reducer_failure_prob = config.reducer_failure_probability;
     let reducer_straggler_prob = config.reducer_straggler_probability;
     let reducer_straggler_delay = config.reducer_straggler_delay_ms;
     let reducer_factory = move |reducer_id: usize| -> ReducerType {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(next_reducer_port);
-        next_reducer_port += 1;
+        let (work_channel, work_rx) = SocketWorkChannel::create_pair(0);
         Reducer::new(
             reducer_id,
             state_for_reducer.clone(),
@@ -229,7 +219,10 @@ fn main() {
 
     // Create reducer executor
     let mut reducer_executor =
-        SocketPhaseExecutor::with_timeout(reducer_factory, config.reducer_timeout_ms);
+        DefaultPhaseExecutor::<ReducerType, SocketCompletionSignaling, _>::new(
+            reducer_factory,
+            config.reducer_timeout_ms,
+        );
 
     // Run map phase
     println!("\n=== MAP PHASE ===");
@@ -239,12 +232,15 @@ fn main() {
     };
     let map_assignments =
         WordSearchProblem::create_map_assignments(data, context.clone(), config.partition_size);
-    let mappers = mapper_executor.execute(
-        mappers,
-        map_assignments,
-        &mapper_signaling,
-        &shutdown_signal,
-    );
+    let mapper_signaling = SocketCompletionSignaling::setup(mappers.len());
+    let mappers = mapper_executor
+        .execute(
+            mappers,
+            map_assignments,
+            mapper_signaling,
+            |signaling, worker_id| signaling.get_sender(worker_id),
+        )
+        .await;
     println!("All mappers completed!");
 
     // Run reduce phase
@@ -252,28 +248,27 @@ fn main() {
     println!("Starting {} reducers...", config.num_reducers);
     let reduce_assignments =
         WordSearchProblem::create_reduce_assignments(context, config.keys_per_reducer);
-    let reducers = reducer_executor.execute(
-        reducers,
-        reduce_assignments,
-        &reducer_signaling,
-        &shutdown_signal,
-    );
+    let reducer_signaling = SocketCompletionSignaling::setup(reducers.len());
+    let reducers = reducer_executor
+        .execute(
+            reducers,
+            reduce_assignments,
+            reducer_signaling,
+            |signaling, worker_id| signaling.get_sender(worker_id),
+        )
+        .await;
     println!("All reducers completed!");
 
     // Shutdown signal and wait for workers to exit
     println!("\n=== SHUTTING DOWN ===");
     shutdown_signal.shutdown();
 
-    // Drop signaling to close all listeners
-    drop(mapper_signaling);
-    drop(reducer_signaling);
-
-    // Drop all workers (threads will exit when they check shutdown signal)
+    // Drop workers to release resources
     drop(mappers);
     drop(reducers);
 
-    // Give threads a moment to check shutdown and exit
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Give threads a moment to check shutdown flag and exit
+    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
 
     println!("All workers terminated gracefully");
 

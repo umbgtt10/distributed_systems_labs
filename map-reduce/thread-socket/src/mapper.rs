@@ -10,7 +10,6 @@ use std::marker::PhantomData;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::thread;
 use std::time::Duration;
-
 use crate::socket_completion_signaling::CompletionSender;
 use crate::socket_work_channel::SocketWorkReceiver;
 

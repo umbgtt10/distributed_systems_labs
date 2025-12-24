@@ -1,4 +1,5 @@
 pub mod completion_signaling;
+pub mod default_phase_executor;
 pub mod map_reduce_problem;
 pub mod phase_executor;
 pub mod shutdown_signal;

@@ -106,6 +106,9 @@ dependencies = [
 [[package]]
 name = "map-reduce-core"
 version = "0.1.0"
+dependencies = [
+ "tokio",
+]
 
 [[package]]
 name = "map-reduce-task-channels"

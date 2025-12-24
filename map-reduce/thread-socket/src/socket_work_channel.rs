@@ -16,12 +16,14 @@ pub struct SocketWorkChannel<A, C> {
 impl<A, C> SocketWorkChannel<A, C> {
     pub fn create_pair(port: u16) -> (Self, SocketWorkReceiver<A, C>) {
         let addr = format!("127.0.0.1:{}", port);
+        let listener = TcpListener::bind(&addr).expect("Failed to bind");
+        let actual_addr = listener.local_addr().expect("Failed to get local address");
         let channel = Self {
-            addr: Arc::new(addr.clone()),
+            addr: Arc::new(actual_addr.to_string()),
             _phantom: PhantomData,
         };
         let receiver = SocketWorkReceiver {
-            listener: Arc::new(TcpListener::bind(&addr).expect("Failed to bind")),
+            listener: Arc::new(listener),
             _phantom: PhantomData,
         };
         (channel, receiver)

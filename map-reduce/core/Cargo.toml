@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-# Core only needs basic types, no tokio
+tokio = { version = "1", features = ["time"] }

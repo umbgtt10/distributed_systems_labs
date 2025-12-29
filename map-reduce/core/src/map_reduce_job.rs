@@ -1,4 +1,4 @@
-use crate::state_access::StateAccess;
+use crate::state_store::StateStore;
 use async_trait::async_trait;
 
 /// Trait that defines a specific MapReduce job
@@ -33,10 +33,10 @@ pub trait MapReduceJob: Send + 'static {
     /// Execute map work for a given assignment
     async fn map_work<S>(assignment: &Self::MapAssignment, state: &S)
     where
-        S: StateAccess;
+        S: StateStore;
 
     /// Execute reduce work for a given assignment
     async fn reduce_work<S>(assignment: &Self::ReduceAssignment, state: &S)
     where
-        S: StateAccess;
+        S: StateStore;
 }

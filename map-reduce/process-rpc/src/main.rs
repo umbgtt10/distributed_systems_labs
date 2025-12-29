@@ -1,29 +1,29 @@
 pub mod config;
-mod grpc_completion_signaling;
-mod grpc_state_access;
 mod grpc_state_server;
-mod grpc_work_channel;
+mod grpc_state_store;
+mod grpc_work_sender;
+mod grpc_worker_runtime;
+mod grpc_worker_synchonization;
 mod mapper;
-mod process_runtime;
 mod reducer;
 pub mod rpc;
 
 use clap::Parser;
-use grpc_completion_signaling::{GrpcSynchronizationSignaling, GrpcSynchronizationToken};
-use grpc_state_access::GrpcStateAccess;
 use grpc_state_server::start_state_server;
+use grpc_state_store::GrpcStateStore;
+use grpc_worker_runtime::{MapperProcessRuntime, ReducerProcessRuntime};
+use grpc_worker_synchonization::{GrpcSynchronizationSignaling, GrpcSynchronizationToken};
 use map_reduce_core::config::Config;
-use map_reduce_core::local_state_access::LocalStateAccess;
+use map_reduce_core::in_memory_state_store::LocalStateAccess;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use map_reduce_core::utils::{generate_test_data, initialize_phase};
 use map_reduce_core::worker_runtime::WorkerTask;
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
 use mapper::{Mapper, MapperFactory};
-use process_runtime::{MapperProcessRuntime, ReducerProcessRuntime};
 use reducer::{Reducer, ReducerFactory};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
@@ -68,9 +68,9 @@ async fn run_worker(cli: Cli) {
         "mapper" => {
             let task: MapperTask<
                 WordSearchProblem,
-                GrpcStateAccess,
+                GrpcStateStore,
                 DummyShutdownSignal,
-                grpc_work_channel::GrpcWorkReceiver<
+                grpc_work_sender::GrpcWorkReceiver<
                     <WordSearchProblem as MapReduceJob>::MapAssignment,
                     GrpcSynchronizationToken,
                 >,
@@ -81,9 +81,9 @@ async fn run_worker(cli: Cli) {
         "reducer" => {
             let task: ReducerTask<
                 WordSearchProblem,
-                GrpcStateAccess,
+                GrpcStateStore,
                 DummyShutdownSignal,
-                grpc_work_channel::GrpcWorkReceiver<
+                grpc_work_sender::GrpcWorkReceiver<
                     <WordSearchProblem as MapReduceJob>::ReduceAssignment,
                     GrpcSynchronizationToken,
                 >,
@@ -116,7 +116,7 @@ async fn run_coordinator() {
         .await
         .expect("Failed to start gRPC state server");
 
-    let grpc_state = GrpcStateAccess::new(format!("127.0.0.1:{}", state_port));
+    let grpc_state = GrpcStateStore::new(format!("127.0.0.1:{}", state_port));
     let shutdown_signal = DummyShutdownSignal;
 
     println!("\nStarting MapReduce with gRPC...");
@@ -124,8 +124,8 @@ async fn run_coordinator() {
     // Define types
     type MapperType = Mapper<
         WordSearchProblem,
-        GrpcStateAccess,
-        grpc_work_channel::GrpcWorkChannel<
+        GrpcStateStore,
+        grpc_work_sender::GrpcWorkChannel<
             <WordSearchProblem as MapReduceJob>::MapAssignment,
             GrpcSynchronizationToken,
         >,
@@ -135,8 +135,8 @@ async fn run_coordinator() {
 
     type ReducerType = Reducer<
         WordSearchProblem,
-        GrpcStateAccess,
-        grpc_work_channel::GrpcWorkChannel<
+        GrpcStateStore,
+        grpc_work_sender::GrpcWorkChannel<
             <WordSearchProblem as MapReduceJob>::ReduceAssignment,
             GrpcSynchronizationToken,
         >,
@@ -147,7 +147,7 @@ async fn run_coordinator() {
     // Create mapper factory
     let mapper_factory = MapperFactory::<
         WordSearchProblem,
-        GrpcStateAccess,
+        GrpcStateStore,
         MapperProcessRuntime,
         DummyShutdownSignal,
     >::new(
@@ -172,7 +172,7 @@ async fn run_coordinator() {
     // Create reducer factory
     let reducer_factory = ReducerFactory::<
         WordSearchProblem,
-        GrpcStateAccess,
+        GrpcStateStore,
         ReducerProcessRuntime,
         DummyShutdownSignal,
     >::new(

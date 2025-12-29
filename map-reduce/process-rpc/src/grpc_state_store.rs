@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -12,13 +12,13 @@ use proto::{GetRequest, InitializeRequest, ReplaceRequest, UpdateRequest};
 /// gRPC client for StateAccess
 /// Native async implementation - no blocking required!
 #[derive(Clone, Serialize, Deserialize)]
-pub struct GrpcStateAccess {
+pub struct GrpcStateStore {
     server_addr: String,
     #[serde(skip)]
     client: Arc<Mutex<Option<StateServiceClient<Channel>>>>,
 }
 
-impl GrpcStateAccess {
+impl GrpcStateStore {
     pub fn new(server_addr: String) -> Self {
         Self {
             server_addr,
@@ -40,7 +40,7 @@ impl GrpcStateAccess {
 }
 
 #[async_trait]
-impl StateAccess for GrpcStateAccess {
+impl StateStore for GrpcStateStore {
     async fn initialize(&self, keys: Vec<String>) {
         if let Ok(mut client) = self.get_client().await {
             let request = tonic::Request::new(InitializeRequest { keys });

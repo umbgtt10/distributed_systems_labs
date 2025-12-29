@@ -2,7 +2,7 @@ use std::future::Future;
 
 /// Trait for abstracting synchronization signaling mechanisms
 /// This allows different implementations for tasks, threads, and processes
-pub trait SynchronizationSignaling: Send {
+pub trait WorkerSynchronization: Send {
     /// The token type passed to workers for signaling completion
     type Token: Clone + Send;
 

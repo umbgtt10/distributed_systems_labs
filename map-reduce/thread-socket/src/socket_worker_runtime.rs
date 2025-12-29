@@ -1,5 +1,5 @@
 use map_reduce_core::shutdown_signal::ShutdownSignal;
-use map_reduce_core::worker_runtime::{WorkerTask, WorkerRuntime};
+use map_reduce_core::worker_runtime::{WorkerRuntime, WorkerTask};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread::{self, JoinHandle};

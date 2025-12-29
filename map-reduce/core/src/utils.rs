@@ -1,8 +1,8 @@
-use crate::completion_signaling::SynchronizationSignaling;
 use crate::config::Config;
 use crate::executor::Executor;
 use crate::worker::Worker;
 use crate::worker_factory::WorkerFactory;
+use crate::worker_synchronization::WorkerSynchronization;
 use rand::Rng;
 
 pub fn generate_random_string(rng: &mut impl Rng, max_length: usize) -> String {
@@ -52,7 +52,7 @@ pub async fn initialize_phase<W, S, F>(
 ) -> (Vec<W>, Executor<W, S, F>)
 where
     W: Worker,
-    S: SynchronizationSignaling,
+    S: WorkerSynchronization,
     F: WorkerFactory<W>,
 {
     let mut workers = Vec::with_capacity(num_workers);

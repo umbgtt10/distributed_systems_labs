@@ -1,18 +1,17 @@
-use async_trait::async_trait;
-use map_reduce_core::completion_signaling::SynchronizationSignaling;
-use map_reduce_core::worker_io::SynchronizationSender;
-use serde::{Deserialize, Serialize};
-use std::sync::Arc;
-use tokio::sync::Notify;
-use tonic::transport::{Channel, Server};
-use tonic::{Request, Response, Status};
-
 use crate::rpc::proto;
+use async_trait::async_trait;
+use map_reduce_core::status_sender::StatusSender;
+use map_reduce_core::worker_synchronization::WorkerSynchronization;
 use proto::synchronization_service_client::SynchronizationServiceClient;
 use proto::synchronization_service_server::{
     SynchronizationService as SynchronizationServiceTrait, SynchronizationServiceServer,
 };
 use proto::{CompletionAck, CompletionMessage, RegisterWorkerRequest, RegisterWorkerResponse};
+use serde::{Deserialize, Serialize};
+use std::sync::Arc;
+use tokio::sync::Notify;
+use tonic::transport::{Channel, Server};
+use tonic::{Request, Response, Status};
 
 /// gRPC Synchronization Token
 /// Sent to workers to report completion back to coordinator
@@ -23,7 +22,7 @@ pub struct GrpcSynchronizationToken {
 }
 
 #[async_trait]
-impl SynchronizationSender for GrpcSynchronizationToken {
+impl StatusSender for GrpcSynchronizationToken {
     async fn register(&self, _worker_id: usize) -> bool {
         let endpoint = format!("http://{}", self.server_addr);
 
@@ -124,7 +123,7 @@ pub struct GrpcSynchronizationSignaling {
     server_addr: String,
 }
 
-impl SynchronizationSignaling for GrpcSynchronizationSignaling {
+impl WorkerSynchronization for GrpcSynchronizationSignaling {
     type Token = GrpcSynchronizationToken;
 
     fn setup(num_workers: usize) -> Self {

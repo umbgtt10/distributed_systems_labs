@@ -1,24 +1,25 @@
-mod channel_completion_signaling;
-mod channel_wrappers;
+mod channel_status_sender;
+mod channel_work_receiver;
+mod channel_work_sender;
+mod channel_worker_runtime;
+mod channel_worker_synchronization;
 mod mapper;
-mod mpsc_work_channel;
 mod reducer;
-mod tokio_runtime;
 
-use channel_completion_signaling::ChannelCompletionSignaling;
-use channel_wrappers::ChannelCompletionSender;
+use channel_status_sender::ChannelStatusSender;
+use channel_work_sender::MpscWorkChannel;
+use channel_worker_runtime::{TokenShutdownSignal, TokioRuntime};
+use channel_worker_synchronization::ChannelCompletionSignaling;
 use map_reduce_core::config::Config;
-use map_reduce_core::local_state_access::LocalStateAccess;
+use map_reduce_core::in_memory_state_store::LocalStateAccess;
 use map_reduce_core::map_reduce_job::MapReduceJob;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use map_reduce_core::utils::{generate_test_data, initialize_phase};
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
 use mapper::{Mapper, MapperFactory};
-use mpsc_work_channel::MpscWorkChannel;
 use reducer::{Reducer, ReducerFactory};
 use std::time::Instant;
 use tokio::{signal, spawn};
-use tokio_runtime::{TokenShutdownSignal, TokioRuntime};
 use tokio_util::sync::CancellationToken;
 
 #[tokio::main]
@@ -47,10 +48,7 @@ async fn main() {
     type MapperType = Mapper<
         WordSearchProblem,
         LocalStateAccess,
-        MpscWorkChannel<
-            <WordSearchProblem as MapReduceJob>::MapAssignment,
-            ChannelCompletionSender,
-        >,
+        MpscWorkChannel<<WordSearchProblem as MapReduceJob>::MapAssignment, ChannelStatusSender>,
         TokioRuntime,
         TokenShutdownSignal,
     >;
@@ -82,10 +80,7 @@ async fn main() {
     type ReducerType = Reducer<
         WordSearchProblem,
         LocalStateAccess,
-        MpscWorkChannel<
-            <WordSearchProblem as MapReduceJob>::ReduceAssignment,
-            ChannelCompletionSender,
-        >,
+        MpscWorkChannel<<WordSearchProblem as MapReduceJob>::ReduceAssignment, ChannelStatusSender>,
         TokioRuntime,
         TokenShutdownSignal,
     >;

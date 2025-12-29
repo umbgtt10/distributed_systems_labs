@@ -1,4 +1,4 @@
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use std::sync::Arc;
 use tonic::transport::Server;
 use tonic::{Request, Response, Status};
@@ -23,7 +23,7 @@ impl<S> GrpcStateServer<S> {
 }
 
 #[tonic::async_trait]
-impl<S: StateAccess + Send + Sync + 'static> StateServiceTrait for GrpcStateServer<S> {
+impl<S: StateStore + Send + Sync + 'static> StateServiceTrait for GrpcStateServer<S> {
     async fn initialize(
         &self,
         request: Request<InitializeRequest>,
@@ -73,7 +73,7 @@ pub struct StateServerHandle {
 }
 
 /// Start the gRPC state server on a specific port
-pub async fn start_state_server<S: StateAccess + Send + Sync + 'static>(
+pub async fn start_state_server<S: StateStore + Send + Sync + 'static>(
     state: S,
     port: u16,
 ) -> Result<StateServerHandle, Box<dyn std::error::Error>> {

@@ -1,4 +1,4 @@
-use map_reduce_core::worker_runtime::{WorkerTask, WorkerRuntime};
+use map_reduce_core::worker_runtime::{WorkerRuntime, WorkerTask};
 use serde::{de::DeserializeOwned, Serialize};
 use std::process::Stdio;
 use tokio::process::{Child, Command};

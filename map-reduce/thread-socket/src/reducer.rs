@@ -1,10 +1,10 @@
-use crate::socket_completion_signaling::SocketCompletionToken;
-use crate::socket_work_channel::{SocketWorkChannel, SocketWorkReceiver};
+use crate::socket_work_sender::{SocketWorkReceiver, SocketWorkSender};
+use crate::socket_worker_synchonization::SocketCompletionToken;
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use map_reduce_core::worker_factory::WorkerFactory;
 use map_reduce_core::worker_runtime::WorkerRuntime;
 use std::marker::PhantomData;
@@ -53,14 +53,14 @@ impl<P, S, R, SD>
         Reducer<
             P,
             S,
-            SocketWorkChannel<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
+            SocketWorkSender<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
             R,
             SD,
         >,
     > for ReducerFactory<P, S, R, SD>
 where
     P: MapReduceJob + 'static,
-    S: StateAccess + Clone + Send + Sync + 'static,
+    S: StateStore + Clone + Send + Sync + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + 'static,
     P::ReduceAssignment:
         Send + Clone + serde::Serialize + for<'de> serde::Deserialize<'de> + 'static,
@@ -83,11 +83,11 @@ where
     ) -> Reducer<
         P,
         S,
-        SocketWorkChannel<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
+        SocketWorkSender<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
         R,
         SD,
     > {
-        let (work_channel, work_rx) = SocketWorkChannel::create_pair(0);
+        let (work_channel, work_rx) = SocketWorkSender::create_pair(0);
 
         map_reduce_core::reducer::Reducer::new(
             id,

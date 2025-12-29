@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use std::cmp::min;
 use std::collections::HashMap;
 
@@ -81,7 +81,7 @@ impl MapReduceJob for WordSearchProblem {
 
     async fn map_work<S>(assignment: &Self::MapAssignment, state: &S)
     where
-        S: StateAccess,
+        S: StateStore,
     {
         let results = map_logic(&assignment.data, &assignment.targets);
 
@@ -95,7 +95,7 @@ impl MapReduceJob for WordSearchProblem {
 
     async fn reduce_work<S>(assignment: &Self::ReduceAssignment, state: &S)
     where
-        S: StateAccess,
+        S: StateStore,
     {
         for key in &assignment.keys {
             let values = state.get(key).await;

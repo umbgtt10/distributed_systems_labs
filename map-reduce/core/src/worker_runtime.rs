@@ -18,7 +18,5 @@ pub trait WorkerRuntime<Task>: Send + 'static {
     fn spawn(task: Task) -> Self::Handle;
 
     /// Wait for the worker to complete
-    fn join(
-        handle: Self::Handle,
-    ) -> impl Future<Output = Result<(), Self::Error>> + Send;
+    fn join(handle: Self::Handle) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }

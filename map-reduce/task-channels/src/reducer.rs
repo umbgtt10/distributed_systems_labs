@@ -1,10 +1,11 @@
-use crate::channel_wrappers::{ChannelCompletionSender, ChannelWorkReceiver};
-use crate::mpsc_work_channel::MpscWorkChannel;
+use crate::channel_status_sender::ChannelStatusSender;
+use crate::channel_work_receiver::ChannelWorkReceiver;
+use crate::channel_work_sender::MpscWorkChannel;
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use map_reduce_core::worker_factory::WorkerFactory;
 use map_reduce_core::worker_runtime::WorkerRuntime;
 use std::marker::PhantomData;
@@ -15,8 +16,8 @@ pub type Reducer<P, S, W, R, SD> = map_reduce_core::reducer::Reducer<
     W,
     R,
     SD,
-    ChannelWorkReceiver<<P as MapReduceJob>::ReduceAssignment, ChannelCompletionSender>,
-    ChannelCompletionSender,
+    ChannelWorkReceiver<<P as MapReduceJob>::ReduceAssignment, ChannelStatusSender>,
+    ChannelStatusSender,
 >;
 
 pub struct ReducerFactory<P, S, R, SD> {
@@ -53,14 +54,14 @@ impl<P, S, R, SD>
         Reducer<
             P,
             S,
-            MpscWorkChannel<<P as MapReduceJob>::ReduceAssignment, ChannelCompletionSender>,
+            MpscWorkChannel<<P as MapReduceJob>::ReduceAssignment, ChannelStatusSender>,
             R,
             SD,
         >,
     > for ReducerFactory<P, S, R, SD>
 where
     P: MapReduceJob + 'static,
-    S: StateAccess + Clone + Send + Sync + 'static,
+    S: StateStore + Clone + Send + Sync + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + 'static,
     P::ReduceAssignment: Send + Clone + 'static,
     R: WorkerRuntime<
@@ -68,8 +69,8 @@ where
                 P,
                 S,
                 SD,
-                ChannelWorkReceiver<<P as MapReduceJob>::ReduceAssignment, ChannelCompletionSender>,
-                ChannelCompletionSender,
+                ChannelWorkReceiver<<P as MapReduceJob>::ReduceAssignment, ChannelStatusSender>,
+                ChannelStatusSender,
             >,
         > + Clone
         + Send
@@ -82,13 +83,13 @@ where
     ) -> Reducer<
         P,
         S,
-        MpscWorkChannel<<P as MapReduceJob>::ReduceAssignment, ChannelCompletionSender>,
+        MpscWorkChannel<<P as MapReduceJob>::ReduceAssignment, ChannelStatusSender>,
         R,
         SD,
     > {
         let (work_channel, work_rx) = MpscWorkChannel::<
             <P as MapReduceJob>::ReduceAssignment,
-            ChannelCompletionSender,
+            ChannelStatusSender,
         >::create_pair(10);
         let wrapped_rx = ChannelWorkReceiver { rx: work_rx };
 

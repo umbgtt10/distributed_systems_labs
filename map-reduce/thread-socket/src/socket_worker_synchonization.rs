@@ -1,6 +1,6 @@
 use async_trait::async_trait;
-use map_reduce_core::completion_signaling::SynchronizationSignaling;
-use map_reduce_core::worker_io::SynchronizationSender as SynchronizationSenderTrait;
+use map_reduce_core::status_sender::StatusSender;
+use map_reduce_core::worker_synchronization::WorkerSynchronization;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -59,7 +59,7 @@ impl SocketCompletionSignaling {
     }
 }
 
-impl SynchronizationSignaling for SocketCompletionSignaling {
+impl WorkerSynchronization for SocketCompletionSignaling {
     type Token = SocketCompletionToken;
 
     fn setup(num_workers: usize) -> Self {
@@ -136,7 +136,7 @@ pub struct SocketCompletionToken {
 }
 
 #[async_trait]
-impl SynchronizationSenderTrait for SocketCompletionToken {
+impl StatusSender for SocketCompletionToken {
     async fn register(&self, _worker_id: usize) -> bool {
         true
     }

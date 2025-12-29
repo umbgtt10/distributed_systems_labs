@@ -1,8 +1,10 @@
 use crate::map_reduce_job::MapReduceJob;
 use crate::shutdown_signal::ShutdownSignal;
-use crate::state_access::StateAccess;
-use crate::work_channel::WorkDistributor;
-use crate::worker_io::{SynchronizationSender, WorkReceiver, WorkerMessage};
+use crate::state_store::StateStore;
+use crate::status_sender::StatusSender;
+use crate::work_receiver::WorkReceiver;
+use crate::work_sender::WorkSender;
+use crate::worker_message::WorkerMessage;
 use crate::worker_runtime::{WorkerRuntime, WorkerTask};
 use async_trait::async_trait;
 use rand::Rng;
@@ -32,10 +34,10 @@ pub struct ReducerTask<P, S, SD, WR, CS> {
 impl<P, S, SD, WR, CS> WorkerTask for ReducerTask<P, S, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess + Send + Sync + 'static,
+    S: StateStore + Send + Sync + 'static,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::ReduceAssignment, CS> + 'static,
-    CS: SynchronizationSender + 'static,
+    CS: StatusSender + 'static,
 {
     type Output = ();
 
@@ -119,12 +121,12 @@ where
 pub struct Reducer<P, S, W, R, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess,
-    W: WorkDistributor<P::ReduceAssignment, CS>,
+    S: StateStore,
+    W: WorkSender<P::ReduceAssignment, CS>,
     R: WorkerRuntime<ReducerTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal,
     WR: WorkReceiver<P::ReduceAssignment, CS>,
-    CS: SynchronizationSender,
+    CS: StatusSender,
 {
     work_channel: W,
     task_handle: R::Handle,
@@ -134,12 +136,12 @@ where
 impl<P, S, W, R, SD, WR, CS> Reducer<P, S, W, R, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess + Send + Sync + 'static,
-    W: WorkDistributor<P::ReduceAssignment, CS> + 'static,
+    S: StateStore + Send + Sync + 'static,
+    W: WorkSender<P::ReduceAssignment, CS> + 'static,
     R: WorkerRuntime<ReducerTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::ReduceAssignment, CS> + 'static,
-    CS: SynchronizationSender + 'static,
+    CS: StatusSender + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -180,12 +182,12 @@ where
 impl<P, S, W, R, SD, WR, CS> crate::worker::Worker for Reducer<P, S, W, R, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess + Send + Sync + 'static,
-    W: WorkDistributor<P::ReduceAssignment, CS> + 'static,
+    S: StateStore + Send + Sync + 'static,
+    W: WorkSender<P::ReduceAssignment, CS> + 'static,
     R: WorkerRuntime<ReducerTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::ReduceAssignment, CS> + 'static,
-    CS: SynchronizationSender + 'static,
+    CS: StatusSender + 'static,
 {
     type Assignment = P::ReduceAssignment;
     type Completion = CS;

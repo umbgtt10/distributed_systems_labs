@@ -1,6 +1,6 @@
 /// Trait for abstracting work distribution to workers
 /// Different implementations for mpsc, sockets, RPC, etc.
-pub trait WorkDistributor<A, C>: Clone + Send + 'static {
+pub trait WorkSender<A, C>: Clone + Send + 'static {
     /// Send initialization token to worker
     fn initialize(&self, token: C);
 

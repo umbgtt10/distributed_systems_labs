@@ -7,7 +7,7 @@ use async_trait::async_trait;
 /// (gRPC, Redis, etc.) where I/O naturally benefits from async/await. Local
 /// implementations pay a small cost of wrapping sync operations in async blocks.
 #[async_trait]
-pub trait StateAccess: Clone + Send + Sync + 'static {
+pub trait StateStore: Clone + Send + Sync + 'static {
     /// Initialize keys with empty vectors
     async fn initialize(&self, keys: Vec<String>);
 

@@ -1,6 +1,7 @@
 use async_trait::async_trait;
-use map_reduce_core::work_channel::WorkDistributor;
-use map_reduce_core::worker_io::{WorkReceiver, WorkerMessage};
+use map_reduce_core::work_receiver::WorkReceiver;
+use map_reduce_core::work_sender::WorkSender;
+use map_reduce_core::worker_message::WorkerMessage;
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::marker::PhantomData;
@@ -11,12 +12,12 @@ use tokio::net::TcpListener;
 
 /// Socket-based work channel
 #[derive(Clone)]
-pub struct SocketWorkChannel<A, C> {
+pub struct SocketWorkSender<A, C> {
     addr: Arc<String>,
     _phantom: PhantomData<(A, C)>,
 }
 
-impl<A, C> SocketWorkChannel<A, C> {
+impl<A, C> SocketWorkSender<A, C> {
     pub fn create_pair(port: u16) -> (Self, SocketWorkReceiver<A, C>) {
         let addr = format!("127.0.0.1:{}", port);
         let std_listener = std::net::TcpListener::bind(&addr).expect("Failed to bind");
@@ -41,7 +42,7 @@ impl<A, C> SocketWorkChannel<A, C> {
     }
 }
 
-impl<A, C> WorkDistributor<A, C> for SocketWorkChannel<A, C>
+impl<A, C> WorkSender<A, C> for SocketWorkSender<A, C>
 where
     A: Clone + Send + Serialize + 'static,
     C: Clone + Send + Serialize + 'static,

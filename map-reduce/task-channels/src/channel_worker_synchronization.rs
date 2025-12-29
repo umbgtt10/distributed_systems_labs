@@ -1,5 +1,5 @@
-use crate::channel_wrappers::ChannelCompletionSender;
-use map_reduce_core::completion_signaling::SynchronizationSignaling;
+use crate::channel_status_sender::ChannelStatusSender;
+use map_reduce_core::worker_synchronization::WorkerSynchronization;
 use tokio::sync::mpsc::{self, Sender};
 use tokio_stream::wrappers::ReceiverStream;
 use tokio_stream::{StreamExt, StreamMap};
@@ -13,8 +13,8 @@ pub struct ChannelCompletionSignaling {
     completion_streams: StreamMap<usize, ReceiverStream<CompletionMessage>>,
 }
 
-impl SynchronizationSignaling for ChannelCompletionSignaling {
-    type Token = ChannelCompletionSender;
+impl WorkerSynchronization for ChannelCompletionSignaling {
+    type Token = ChannelStatusSender;
 
     fn setup(num_workers: usize) -> Self {
         let mut completion_txs = Vec::new();
@@ -33,7 +33,7 @@ impl SynchronizationSignaling for ChannelCompletionSignaling {
     }
 
     fn get_token(&self, worker_id: usize) -> Self::Token {
-        ChannelCompletionSender {
+        ChannelStatusSender {
             tx: self.completion_txs[worker_id].clone(),
         }
     }

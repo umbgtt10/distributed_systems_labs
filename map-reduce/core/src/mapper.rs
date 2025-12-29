@@ -1,8 +1,10 @@
 use crate::map_reduce_job::MapReduceJob;
 use crate::shutdown_signal::ShutdownSignal;
-use crate::state_access::StateAccess;
-use crate::work_channel::WorkDistributor;
-use crate::worker_io::{SynchronizationSender, WorkReceiver, WorkerMessage};
+use crate::state_store::StateStore;
+use crate::status_sender::StatusSender;
+use crate::work_receiver::WorkReceiver;
+use crate::work_sender::WorkSender;
+use crate::worker_message::WorkerMessage;
 use crate::worker_runtime::{WorkerRuntime, WorkerTask};
 use async_trait::async_trait;
 use rand::Rng;
@@ -32,10 +34,10 @@ pub struct MapperTask<P, S, SD, WR, CS> {
 impl<P, S, SD, WR, CS> WorkerTask for MapperTask<P, S, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess + Send + Sync + 'static,
+    S: StateStore + Send + Sync + 'static,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::MapAssignment, CS> + 'static,
-    CS: SynchronizationSender + 'static,
+    CS: StatusSender + 'static,
 {
     type Output = ();
 
@@ -117,12 +119,12 @@ where
 pub struct Mapper<P, S, W, R, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess,
-    W: WorkDistributor<P::MapAssignment, CS>,
+    S: StateStore,
+    W: WorkSender<P::MapAssignment, CS>,
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal,
     WR: WorkReceiver<P::MapAssignment, CS>,
-    CS: SynchronizationSender,
+    CS: StatusSender,
 {
     work_channel: W,
     task_handle: R::Handle,
@@ -132,12 +134,12 @@ where
 impl<P, S, W, R, SD, WR, CS> Mapper<P, S, W, R, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess + Send + Sync + 'static,
-    W: WorkDistributor<P::MapAssignment, CS> + 'static,
+    S: StateStore + Send + Sync + 'static,
+    W: WorkSender<P::MapAssignment, CS> + 'static,
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::MapAssignment, CS> + 'static,
-    CS: SynchronizationSender + 'static,
+    CS: StatusSender + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -178,12 +180,12 @@ where
 impl<P, S, W, R, SD, WR, CS> crate::worker::Worker for Mapper<P, S, W, R, SD, WR, CS>
 where
     P: MapReduceJob,
-    S: StateAccess + Send + Sync + 'static,
-    W: WorkDistributor<P::MapAssignment, CS> + 'static,
+    S: StateStore + Send + Sync + 'static,
+    W: WorkSender<P::MapAssignment, CS> + 'static,
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::MapAssignment, CS> + 'static,
-    CS: SynchronizationSender + 'static,
+    CS: StatusSender + 'static,
 {
     type Assignment = P::MapAssignment;
     type Completion = CS;

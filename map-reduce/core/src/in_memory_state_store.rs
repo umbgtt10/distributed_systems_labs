@@ -1,4 +1,4 @@
-use crate::state_access::StateAccess;
+use crate::state_store::StateStore;
 use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -29,7 +29,7 @@ impl LocalStateAccess {
 }
 
 #[async_trait]
-impl StateAccess for LocalStateAccess {
+impl StateStore for LocalStateAccess {
     async fn update(&self, key: String, value: i32) {
         let mut map = self.map.lock().unwrap();
         map.entry(key).or_default().push(value);

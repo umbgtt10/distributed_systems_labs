@@ -1,21 +1,21 @@
 mod mapper;
 mod reducer;
-mod socket_completion_signaling;
-mod socket_work_channel;
-mod thread_runtime;
+mod socket_work_sender;
+mod socket_worker_runtime;
+mod socket_worker_synchonization;
 
 use map_reduce_core::config::Config;
-use map_reduce_core::local_state_access::LocalStateAccess;
+use map_reduce_core::in_memory_state_store::LocalStateAccess;
 use map_reduce_core::map_reduce_job::MapReduceJob;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use map_reduce_core::utils::{generate_test_data, initialize_phase};
 use map_reduce_word_search::{WordSearchContext, WordSearchProblem};
 use mapper::{Mapper, MapperFactory};
 use reducer::{Reducer, ReducerFactory};
-use socket_completion_signaling::{SocketCompletionSignaling, SocketCompletionToken};
-use socket_work_channel::SocketWorkChannel;
+use socket_work_sender::SocketWorkSender;
+use socket_worker_runtime::{AtomicShutdownSignal, ThreadRuntime};
+use socket_worker_synchonization::{SocketCompletionSignaling, SocketCompletionToken};
 use std::time::Instant;
-use thread_runtime::{AtomicShutdownSignal, ThreadRuntime};
 
 #[tokio::main]
 async fn main() {
@@ -50,10 +50,7 @@ async fn main() {
     type MapperType = Mapper<
         WordSearchProblem,
         LocalStateAccess,
-        SocketWorkChannel<
-            <WordSearchProblem as MapReduceJob>::MapAssignment,
-            SocketCompletionToken,
-        >,
+        SocketWorkSender<<WordSearchProblem as MapReduceJob>::MapAssignment, SocketCompletionToken>,
         ThreadRuntime,
         AtomicShutdownSignal,
     >;
@@ -61,7 +58,7 @@ async fn main() {
     type ReducerType = Reducer<
         WordSearchProblem,
         LocalStateAccess,
-        SocketWorkChannel<
+        SocketWorkSender<
             <WordSearchProblem as MapReduceJob>::ReduceAssignment,
             SocketCompletionToken,
         >,

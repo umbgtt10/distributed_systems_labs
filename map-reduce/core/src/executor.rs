@@ -1,7 +1,7 @@
-use crate::completion_signaling::SynchronizationSignaling;
 use crate::shutdown_signal::ShutdownSignal;
 use crate::worker::Worker;
 use crate::worker_factory::WorkerFactory;
+use crate::worker_synchronization::WorkerSynchronization;
 use std::cmp::max;
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -20,7 +20,7 @@ struct AssignmentInfo<A> {
 pub struct Executor<W, CS, F>
 where
     W: Worker,
-    CS: SynchronizationSignaling,
+    CS: WorkerSynchronization,
     F: WorkerFactory<W>,
 {
     worker_factory: F,
@@ -31,7 +31,7 @@ where
 impl<W, CS, F> Executor<W, CS, F>
 where
     W: Worker,
-    CS: SynchronizationSignaling,
+    CS: WorkerSynchronization,
     F: WorkerFactory<W>,
 {
     pub fn new(worker_factory: F, timeout_ms: u64) -> Self {
@@ -50,7 +50,7 @@ where
 impl<W, CS, F> Executor<W, CS, F>
 where
     W: Worker,
-    CS: SynchronizationSignaling,
+    CS: WorkerSynchronization,
     W::Completion: From<CS::Token>,
     F: WorkerFactory<W>,
 {

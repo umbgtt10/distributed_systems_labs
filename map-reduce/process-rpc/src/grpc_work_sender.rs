@@ -1,17 +1,17 @@
+use crate::rpc::proto;
 use async_trait::async_trait;
-use map_reduce_core::work_channel::WorkDistributor;
-use map_reduce_core::worker_io::{WorkReceiver, WorkerMessage};
+use map_reduce_core::work_receiver::WorkReceiver;
+use map_reduce_core::work_sender::WorkSender;
+use map_reduce_core::worker_message::WorkerMessage;
+use proto::work_service_client::WorkServiceClient;
+use proto::work_service_server::{WorkService as WorkServiceTrait, WorkServiceServer};
+use proto::{InitializeWorkerRequest, WorkAck, WorkMessage};
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tonic::transport::{Channel, Server};
 use tonic::{Request, Response, Status};
-
-use crate::rpc::proto;
-use proto::work_service_client::WorkServiceClient;
-use proto::work_service_server::{WorkService as WorkServiceTrait, WorkServiceServer};
-use proto::{InitializeWorkerRequest, WorkAck, WorkMessage};
 
 /// gRPC Work Channel Distributor
 /// Sends work to workers via gRPC (hybrid JSON approach)
@@ -45,7 +45,7 @@ where
     }
 }
 
-impl<A, C> WorkDistributor<A, C> for GrpcWorkChannel<A, C>
+impl<A, C> WorkSender<A, C> for GrpcWorkChannel<A, C>
 where
     A: Clone + Send + Serialize + 'static,
     C: Clone + Send + Serialize + 'static,

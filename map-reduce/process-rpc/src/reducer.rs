@@ -1,10 +1,10 @@
-use crate::grpc_completion_signaling::GrpcSynchronizationToken;
-use crate::grpc_work_channel::{GrpcWorkChannel, GrpcWorkReceiver};
+use crate::grpc_work_sender::{GrpcWorkChannel, GrpcWorkReceiver};
+use crate::grpc_worker_synchonization::GrpcSynchronizationToken;
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
-use map_reduce_core::state_access::StateAccess;
+use map_reduce_core::state_store::StateStore;
 use map_reduce_core::worker_factory::WorkerFactory;
 use map_reduce_core::worker_runtime::WorkerRuntime;
 use serde::{Deserialize, Serialize};
@@ -61,7 +61,7 @@ impl<P, S, R, SD>
     > for ReducerFactory<P, S, R, SD>
 where
     P: MapReduceJob + 'static,
-    S: StateAccess + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
+    S: StateStore + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
     SD: ShutdownSignal + Clone + Send + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
     P::ReduceAssignment: Send + Clone + Sync + Serialize + for<'de> Deserialize<'de> + 'static,
     R: WorkerRuntime<

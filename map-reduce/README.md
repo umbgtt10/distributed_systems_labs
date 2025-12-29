@@ -108,26 +108,27 @@ This workspace uses a **trait-based plugin architecture**:
 
 ---
 
-### [`process-rpc/`](process-rpc/README.md) - Multi-Process RPC 🔗
+### [`process-rpc/`](process-rpc/README.md) - Multi-Process gRPC 🔗
 
 **Execution Model**: Separate OS processes
-**Communication**: RPC over TCP with length-delimited framing
-**State**: `RemoteStateAccess` (TCP to state server)
+**Communication**: gRPC (Tonic) over HTTP/2 with Protocol Buffers
+**State**: `GrpcStateAccess` (Remote gRPC State Server)
 **Isolation**: Process-level (true isolation)
 
 **Use Cases**:
 - ✅ True fault isolation (worker crashes don't affect coordinator)
 - ✅ Closest to real distributed systems
 - ✅ Testing failure injection and recovery
-- ✅ Learning process management and RPC
-- ⚠️ Higher overhead (process spawning, IPC)
+- ✅ Learning gRPC and Protocol Buffers
+- ⚠️ Highest overhead (process spawning, Protobuf serialization)
 
-**Performance**: 0.80-2.77s (varies with process startup)
+**Performance**: 1.65-6.90s (slowest due to process startup and serialization)
 
 **Advanced Features**:
 - Fault injection (forced worker failures)
 - Straggler detection (slow worker handling)
-- Automatic process cleanup (`AutoKillChild` RAII wrapper)
+- Automatic process cleanup
+- Type-safe contract via `.proto` files
 
 → [**Explore process-rpc Implementation**](process-rpc/README.md)
 
@@ -187,12 +188,12 @@ Execution time: 1.23s
 | Feature | task-channels | thread-socket | process-rpc |
 |---------|--------------|---------------|-------------|
 | **Execution** | Tokio tasks | OS threads | OS processes |
-| **Communication** | mpsc channels | TCP sockets | RPC over TCP |
+| **Communication** | mpsc channels | TCP sockets | gRPC (HTTP/2) |
 | **State Location** | In-memory | In-memory (shared) | Remote server |
-| **Serialization** | None | JSON | JSON |
+| **Serialization** | None | JSON | Protobuf + JSON |
 | **Fault Isolation** | None | Thread-level | Process-level |
 | **Crash Recovery** | ❌ | ❌ | ✅ |
-| **Performance** | ⭐⭐⭐ Fast | ⭐⭐ Moderate | ⭐ Variable |
+| **Performance** | ⭐⭐⭐ Fast | ⭐⭐ Moderate | ⭐ Slow |
 | **Realism** | Low | Medium | High |
 | **Complexity** | Low | Medium | High |
 
@@ -256,16 +257,19 @@ trait WorkChannel<A, C>: Send + Sync {
 - Generic types `A` and `C` allow any serializable data
 - `async` requirement enforces non-blocking I/O
 
-### 4. Manual TCP Protocol
+### 4. gRPC & Protocol Buffers
 
-The `process-rpc` implementation uses **manual framing** for reliability:
+The `process-rpc` implementation uses **gRPC** for robust communication:
 
-```rust
-// Length-delimited codec prevents TCP message boundaries issues
-let framed = Framed::new(stream, LengthDelimitedCodec::new());
+```protobuf
+// Type-safe service definition in .proto
+service MapReduce {
+  rpc GetTask (TaskRequest) returns (stream TaskResponse);
+  rpc ReportCompletion (CompletionReport) returns (Ack);
+}
 ```
 
-This replaced an unreliable high-level RPC library and eliminated connection hangs.
+This provides strong type safety, efficient binary serialization, and HTTP/2 multiplexing out of the box.
 
 ---
 
@@ -302,7 +306,7 @@ cargo run -- --input-dir ./custom_data --output-file results.txt
 |----------------|-----|-----|-----|
 | task-channels | 0.75s | 1.51s | 1.13s |
 | thread-socket | 1.10s | 2.32s | 1.71s |
-| process-rpc | 0.80s | 2.77s | 1.79s |
+| process-rpc | 1.65s | 6.90s | 3.40s |
 
 **Observations**:
 - `task-channels` is consistently fastest (no serialization)
@@ -346,7 +350,7 @@ This project teaches:
 
 ### For Contributors
 
-1. **Add a fourth implementation** (e.g., gRPC, WebSockets, QUIC)
+1. **Add a fourth implementation** (e.g., WebSockets, QUIC)
 2. **Optimize performance** (better chunking, parallel reduce, etc.)
 3. **Add benchmarks** (criterion for micro-benchmarks)
 4. **Port other MIT labs** (Raft, KV Service, etc.)

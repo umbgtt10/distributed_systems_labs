@@ -18,9 +18,11 @@ tokio-util = "0.7.17"
 tokio-stream = { version = "0.1.17", features = ["net"] }
 ctrlc = "3.4"
 clap = { version = "4.5", features = ["derive"] }
-tonic = "0.12"
-prost = "0.13"
-tonic-build = "0.12"
+tonic = "0.14.2"
+tonic-prost = "0.14.2"
+prost = "0.14.1"
+tonic-build = "0.14.2"
+tonic-prost-build = "0.14.2"
 
 map-reduce-core = { path = "core" }
 map-reduce-word-search = { path = "word-search" }

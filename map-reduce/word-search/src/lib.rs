@@ -1,3 +1,4 @@
+use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::state_access::StateAccess;
 use std::cmp::min;
@@ -26,6 +27,7 @@ pub struct WordSearchContext {
     pub targets: Vec<String>,
 }
 
+#[async_trait]
 impl MapReduceJob for WordSearchProblem {
     type Input = Vec<String>;
     type MapAssignment = MapWorkAssignment;
@@ -77,7 +79,7 @@ impl MapReduceJob for WordSearchProblem {
             .collect()
     }
 
-    fn map_work<S>(assignment: &Self::MapAssignment, state: &S)
+    async fn map_work<S>(assignment: &Self::MapAssignment, state: &S)
     where
         S: StateAccess,
     {
@@ -86,19 +88,19 @@ impl MapReduceJob for WordSearchProblem {
         // Write results to shared state
         for (key, value) in results {
             if value > 0 {
-                state.update(key, value);
+                state.update(key, value).await;
             }
         }
     }
 
-    fn reduce_work<S>(assignment: &Self::ReduceAssignment, state: &S)
+    async fn reduce_work<S>(assignment: &Self::ReduceAssignment, state: &S)
     where
         S: StateAccess,
     {
         for key in &assignment.keys {
-            let values = state.get(key);
+            let values = state.get(key).await;
             let sum: i32 = values.iter().sum();
-            state.replace(key.clone(), sum);
+            state.replace(key.clone(), sum).await;
         }
     }
 }

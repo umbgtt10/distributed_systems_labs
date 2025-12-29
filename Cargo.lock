@@ -582,6 +582,7 @@ dependencies = [
 name = "map-reduce-word-search"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "map-reduce-core",
  "serde",
 ]

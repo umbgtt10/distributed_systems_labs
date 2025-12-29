@@ -108,7 +108,7 @@ async fn run_coordinator() {
 
     // Start State Server with gRPC
     let local_state = LocalStateAccess::new();
-    local_state.initialize(targets.clone());
+    local_state.initialize(targets.clone()).await;
 
     // Pick random port for state server
     let state_port = rand::random::<u16>() % 10000 + 20000;

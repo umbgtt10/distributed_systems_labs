@@ -35,7 +35,7 @@ async fn main() {
 
     // Create state access layer
     let state = LocalStateAccess::new();
-    state.initialize(targets.clone());
+    state.initialize(targets.clone()).await;
 
     println!("\nStarting MapReduce...");
 
@@ -56,7 +56,12 @@ async fn main() {
     >;
 
     // Create mapper factory
-    let mapper_factory = MapperFactory::<WordSearchProblem, LocalStateAccess, TokioRuntime, TokenShutdownSignal>::new(
+    let mapper_factory = MapperFactory::<
+        WordSearchProblem,
+        LocalStateAccess,
+        TokioRuntime,
+        TokenShutdownSignal,
+    >::new(
         state.clone(),
         shutdown_signal.clone(),
         config.mapper_failure_probability,
@@ -65,11 +70,12 @@ async fn main() {
     );
 
     // Create initial mapper pool
-    let (mappers, mut mapper_executor) = initialize_phase::<MapperType, ChannelCompletionSignaling, _>(
-        config.num_mappers,
-        mapper_factory,
-        config.mapper_timeout_ms,
-    );
+    let (mappers, mut mapper_executor) =
+        initialize_phase::<MapperType, ChannelCompletionSignaling, _>(
+            config.num_mappers,
+            mapper_factory,
+            config.mapper_timeout_ms,
+        );
 
     // Define reducer type
     type ReducerType = Reducer<
@@ -84,7 +90,12 @@ async fn main() {
     >;
 
     // Create reducer factory
-    let reducer_factory = ReducerFactory::<WordSearchProblem, LocalStateAccess, TokioRuntime, TokenShutdownSignal>::new(
+    let reducer_factory = ReducerFactory::<
+        WordSearchProblem,
+        LocalStateAccess,
+        TokioRuntime,
+        TokenShutdownSignal,
+    >::new(
         state.clone(),
         shutdown_signal.clone(),
         config.reducer_failure_probability,
@@ -93,11 +104,12 @@ async fn main() {
     );
 
     // Create initial reducer pool
-    let (reducers, mut reducer_executor) = initialize_phase::<ReducerType, ChannelCompletionSignaling, _>(
-        config.num_reducers,
-        reducer_factory,
-        config.reducer_timeout_ms,
-    );
+    let (reducers, mut reducer_executor) =
+        initialize_phase::<ReducerType, ChannelCompletionSignaling, _>(
+            config.num_reducers,
+            reducer_factory,
+            config.reducer_timeout_ms,
+        );
 
     // Setup Ctrl+C handler
     let ctrl_c_token = cancel_token.clone();

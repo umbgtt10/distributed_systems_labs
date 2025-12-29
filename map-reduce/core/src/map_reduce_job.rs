@@ -1,16 +1,18 @@
 use crate::state_access::StateAccess;
+use async_trait::async_trait;
 
 /// Trait that defines a specific MapReduce job
 /// Abstracts the job domain from the execution model
+#[async_trait]
 pub trait MapReduceJob: Send + 'static {
     /// The input data type for the map phase
     type Input: Send;
 
     /// The assignment type for mappers
-    type MapAssignment: Send + Clone;
+    type MapAssignment: Send + Sync + Clone;
 
     /// The assignment type for reducers
-    type ReduceAssignment: Send + Clone;
+    type ReduceAssignment: Send + Sync + Clone;
 
     /// Problem-specific context (e.g., search targets, configuration)
     type Context: Clone + Send;
@@ -29,12 +31,12 @@ pub trait MapReduceJob: Send + 'static {
     ) -> Vec<Self::ReduceAssignment>;
 
     /// Execute map work for a given assignment
-    fn map_work<S>(assignment: &Self::MapAssignment, state: &S)
+    async fn map_work<S>(assignment: &Self::MapAssignment, state: &S)
     where
         S: StateAccess;
 
     /// Execute reduce work for a given assignment
-    fn reduce_work<S>(assignment: &Self::ReduceAssignment, state: &S)
+    async fn reduce_work<S>(assignment: &Self::ReduceAssignment, state: &S)
     where
         S: StateAccess;
 }

@@ -3,7 +3,7 @@ use crate::shutdown_signal::ShutdownSignal;
 use crate::state_access::StateAccess;
 use crate::work_channel::WorkDistributor;
 use crate::worker_io::{CompletionSender, WorkReceiver};
-use crate::worker_runtime::{WorkerTask, WorkerRuntime};
+use crate::worker_runtime::{WorkerRuntime, WorkerTask};
 use async_trait::async_trait;
 use rand::Rng;
 use serde::de::DeserializeOwned;
@@ -77,12 +77,13 @@ where
 
                     // Execute work with error handling
                     let state = &self.state;
-                    let result = catch_unwind(AssertUnwindSafe(|| {
-                        P::reduce_work(&assignment, state);
+                    let result = catch_unwind(AssertUnwindSafe(|| async {
+                        P::reduce_work(&assignment, state).await;
                     }));
 
                     match result {
-                        Ok(_) => {
+                        Ok(future) => {
+                            future.await;
                             if completion_sender.send(Ok(self.id)).await {
                                 println!("Reducer {} finished work", self.id);
                             } else {

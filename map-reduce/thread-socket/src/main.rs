@@ -31,7 +31,7 @@ async fn main() {
 
     // Create state
     let state = LocalStateAccess::new();
-    state.initialize(targets.clone());
+    state.initialize(targets.clone()).await;
 
     println!("\nStarting MapReduce...");
 
@@ -50,7 +50,10 @@ async fn main() {
     type MapperType = Mapper<
         WordSearchProblem,
         LocalStateAccess,
-        SocketWorkChannel<<WordSearchProblem as MapReduceJob>::MapAssignment, SocketCompletionToken>,
+        SocketWorkChannel<
+            <WordSearchProblem as MapReduceJob>::MapAssignment,
+            SocketCompletionToken,
+        >,
         ThreadRuntime,
         AtomicShutdownSignal,
     >;
@@ -67,7 +70,12 @@ async fn main() {
     >;
 
     // Create mapper factory
-    let mapper_factory = MapperFactory::<WordSearchProblem, LocalStateAccess, ThreadRuntime, AtomicShutdownSignal>::new(
+    let mapper_factory = MapperFactory::<
+        WordSearchProblem,
+        LocalStateAccess,
+        ThreadRuntime,
+        AtomicShutdownSignal,
+    >::new(
         state.clone(),
         shutdown_signal.clone(),
         config.mapper_failure_probability,
@@ -83,7 +91,12 @@ async fn main() {
     );
 
     // Create reducer factory
-    let reducer_factory = ReducerFactory::<WordSearchProblem, LocalStateAccess, ThreadRuntime, AtomicShutdownSignal>::new(
+    let reducer_factory = ReducerFactory::<
+        WordSearchProblem,
+        LocalStateAccess,
+        ThreadRuntime,
+        AtomicShutdownSignal,
+    >::new(
         state.clone(),
         shutdown_signal.clone(),
         config.reducer_failure_probability,
@@ -92,11 +105,12 @@ async fn main() {
     );
 
     // Initialize reducer phase
-    let (reducers, mut reducer_executor) = initialize_phase::<ReducerType, SocketCompletionSignaling, _>(
-        config.num_reducers,
-        reducer_factory,
-        config.reducer_timeout_ms,
-    );
+    let (reducers, mut reducer_executor) =
+        initialize_phase::<ReducerType, SocketCompletionSignaling, _>(
+            config.num_reducers,
+            reducer_factory,
+            config.reducer_timeout_ms,
+        );
 
     // Run map phase
     println!("\n=== MAP PHASE ===");

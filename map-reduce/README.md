@@ -257,19 +257,27 @@ trait WorkChannel<A, C>: Send + Sync {
 - Generic types `A` and `C` allow any serializable data
 - `async` requirement enforces non-blocking I/O
 
-### 4. gRPC & Protocol Buffers
+### 4. Async-First Architecture (Design Decision)
 
-The `process-rpc` implementation uses **gRPC** for robust communication:
+**The `StateAccess` trait is async** to favor network-based implementations (gRPC, Redis, etc.):
 
-```protobuf
-// Type-safe service definition in .proto
-service MapReduce {
-  rpc GetTask (TaskRequest) returns (stream TaskResponse);
-  rpc ReportCompletion (CompletionReport) returns (Ack);
+```rust
+#[async_trait]
+pub trait StateAccess: Clone + Send + Sync + 'static {
+    async fn get(&self, key: &str) -> Vec<i32>;
+    async fn update(&self, key: String, value: i32);
+    // ...
 }
 ```
 
-This provides strong type safety, efficient binary serialization, and HTTP/2 multiplexing out of the box.
+**Why async?**
+- ✅ **gRPC** works naturally with native async/await (no blocking!)
+- ✅ **Future-proof** for Redis, Cassandra, network storage
+- ⚠️ **Local implementations** pay a small cost (wrapping sync HashMap in async)
+
+**Alternative considered**: Sync trait would keep HashMap simple but force gRPC to use `block_in_place` + `block_on` (expensive and awkward).
+
+**Decision**: Favor distributed systems patterns over in-memory simplicity.
 
 ---
 

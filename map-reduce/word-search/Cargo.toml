@@ -6,3 +6,4 @@ edition = "2021"
 [dependencies]
 map-reduce-core = { workspace = true }
 serde = { workspace = true }
+async-trait = { workspace = true }

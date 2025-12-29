@@ -29,7 +29,7 @@ impl<S: StateAccess + Send + Sync + 'static> StateServiceTrait for GrpcStateServ
         request: Request<InitializeRequest>,
     ) -> Result<Response<StateResponse>, Status> {
         let keys = request.into_inner().keys;
-        self.state.initialize(keys);
+        self.state.initialize(keys).await;
         Ok(Response::new(StateResponse {
             success: true,
             error: String::new(),
@@ -41,7 +41,7 @@ impl<S: StateAccess + Send + Sync + 'static> StateServiceTrait for GrpcStateServ
         request: Request<UpdateRequest>,
     ) -> Result<Response<StateResponse>, Status> {
         let req = request.into_inner();
-        self.state.update(req.key, req.value);
+        self.state.update(req.key, req.value).await;
         Ok(Response::new(StateResponse {
             success: true,
             error: String::new(),
@@ -53,7 +53,7 @@ impl<S: StateAccess + Send + Sync + 'static> StateServiceTrait for GrpcStateServ
         request: Request<ReplaceRequest>,
     ) -> Result<Response<StateResponse>, Status> {
         let req = request.into_inner();
-        self.state.replace(req.key, req.value);
+        self.state.replace(req.key, req.value).await;
         Ok(Response::new(StateResponse {
             success: true,
             error: String::new(),
@@ -62,7 +62,7 @@ impl<S: StateAccess + Send + Sync + 'static> StateServiceTrait for GrpcStateServ
 
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let key = request.into_inner().key;
-        let values = self.state.get(&key);
+        let values = self.state.get(&key).await;
         Ok(Response::new(GetResponse { values }))
     }
 }

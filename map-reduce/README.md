@@ -59,8 +59,8 @@ This workspace uses a **trait-based plugin architecture**:
 **Key Traits**:
 - `MapReduceJob<K, V>` - Business logic contract (map/reduce functions)
 - `StateAccess<S, K, V>` - Key-value storage abstraction (local or remote)
-- `WorkChannel<A, C>` - Work distribution to workers
-- `CompletionSignaling` - Worker completion notifications
+- `WorkSender<A, C>` - Work distribution to workers
+- `WorkerSynchronization` - Worker completion notifications
 - `WorkerRuntime` - Worker lifecycle management
 
 **Why it matters**: These traits enforce compile-time guarantees that implementations satisfy the contract. Changing infrastructure doesn't break the coordinator/worker algorithm.

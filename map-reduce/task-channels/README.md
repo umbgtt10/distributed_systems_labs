@@ -51,7 +51,7 @@ This implementation uses **Tokio async tasks** with **mpsc channels** for commun
 
 ## Key Components
 
-### 1. `MpscWorkChannel` - Work Distribution
+### 1. `ChannelWorkSender` - Work Distribution
 
 Uses Tokio's bounded `mpsc::channel` for work distribution with backpressure support.
 
@@ -60,9 +60,12 @@ Uses Tokio's bounded `mpsc::channel` for work distribution with backpressure sup
 - **Bounded**: Configurable buffer size prevents unbounded memory growth
 - **Fast**: In-memory queue, ~nanosecond latency
 
+**Distributed System Trade-off**:
+While extremely fast, this approach is **limited to a single machine**. In a real distributed system, work distribution requires network serialization (like TCP or RPC), which introduces latency but allows scaling across multiple nodes.
+
 ---
 
-### 2. `ChannelCompletionSignaling` - Completion Notifications
+### 2. `ChannelWorkerSynchronization` - Completion Notifications
 
 Uses Tokio's `select!` with `FusedFuture` to multiplex completion signals from multiple workers. Each worker has a dedicated channel that can be reset independently for fault tolerance.
 

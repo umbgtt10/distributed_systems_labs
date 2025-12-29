@@ -87,7 +87,8 @@ This implementation is significantly slower than `task-channels` and `thread-soc
 2.  **Serialization Overhead**: All data must be serialized to Protobuf and deserialized.
 3.  **Network Stack**: Communication goes through the full TCP/IP stack (loopback).
 
-However, it provides the best simulation of a real distributed system where components fail independently and share no memory.
+**Distributed System Trade-off**:
+While slower, this provides the **best simulation of a real distributed system**. Components fail independently, share no memory, and communicate strictly over the network. This architecture forces you to handle partial failures and network partitions correctly, which is the primary challenge in distributed systems.
 
 ---
 

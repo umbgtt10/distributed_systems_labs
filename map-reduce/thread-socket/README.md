@@ -54,7 +54,7 @@ This implementation uses **OS threads** with **TCP sockets** for communication. 
 
 ## Key Components
 
-### 1. `SocketWorkChannel` - TCP-Based Work Distribution
+### 1. `SocketWorkSender` - TCP-Based Work Distribution
 
 Implements TCP-based work distribution using length-prefixed JSON messages. Each worker connects to a dynamically-assigned TCP port to receive work assignments.
 
@@ -69,9 +69,12 @@ Coordinator → Worker (TCP): [4-byte length][JSON assignment]
 - **Async I/O**: Uses Tokio for non-blocking operations
 - **One connection per worker**: Coordinator listens, workers connect
 
+**Distributed System Trade-off**:
+This introduces **serialization overhead** and **network stack latency**, mimicking a real distributed system. However, since it runs on `localhost`, it avoids the unpredictability of a real network (packet loss, variable latency).
+
 ---
 
-### 2. `SocketCompletionSignaling` - TCP Completion Listener
+### 2. `SocketWorkerSynchronization` - TCP Completion Listener
 
 Workers signal completion by connecting to the coordinator's completion listener and sending a length-prefixed JSON message containing worker ID and success/failure status.
 

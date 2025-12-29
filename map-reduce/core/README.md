@@ -39,8 +39,8 @@ At compile time, Rust monomorphizes these traits, generating optimized code for 
 Each trait addresses a single responsibility:
 - **`MapReduceJob`** - What computation to perform
 - **`StateAccess`** - How to store/retrieve key-value pairs
-- **`WorkDistributor`** - How to send work to workers
-- **`CompletionSignaling`** - How workers notify completion
+- **`WorkSender`** - How to send work to workers
+- **`WorkerSynchronization`** - How workers notify completion
 - **`WorkerRuntime`** - How to spawn and manage workers
 
 This separation allows **mixing and matching** implementations independently.
@@ -134,42 +134,43 @@ pub trait Worker: Send {
 
 ---
 
-### `WorkDistributor`
+### `WorkSender`
 
 Abstracts the mechanism for distributing work to workers.
 
 ```rust
-pub trait WorkDistributor<A, C>: Send {
-    fn start(&self) -> (Box<dyn WorkReceiver<A, C>>, C);
+pub trait WorkSender<A, C>: Clone + Send + 'static {
+    fn initialize(&self, sender: C);
+    fn send_work(&self, assignment: A, completion: C);
 }
 ```
 
 **Implementations**:
-- `MpscWorkChannel` - Tokio mpsc channels (task-channels)
-- `SocketWorkChannel` - TCP sockets (thread-socket)
-- `RpcWorkChannel` - RPC over TCP (process-rpc)
+- `ChannelWorkSender` - Tokio mpsc channels (task-channels)
+- `SocketWorkSender` - TCP sockets (thread-socket)
+- `GrpcWorkSender` - RPC over TCP (process-rpc)
 
 ---
 
-### `CompletionSignaling`
+### `WorkerSynchronization`
 
 Abstracts how workers signal completion or failure.
 
 ```rust
-pub trait CompletionSignaling: Send {
-    type Token: Clone + Send;
+pub trait WorkerSynchronization: Send {
+    type StatusSender: Clone + Send;
 
     fn setup(num_workers: usize) -> Self;
-    fn get_token(&self, worker_id: usize) -> Self::Token;
+    fn get_status_sender(&self, worker_id: usize) -> Self::StatusSender;
     fn wait_next(&mut self) -> impl Future<Output = Option<Result<usize, usize>>> + Send;
-    fn reset_worker(&mut self, worker_id: usize) -> impl Future<Output = Self::Token> + Send;
+    fn reset_worker(&mut self, worker_id: usize) -> impl Future<Output = Self::StatusSender> + Send;
 }
 ```
 
 **Implementations**:
-- `ChannelCompletionSignaling` - Tokio channels (task-channels)
-- `SocketCompletionSignaling` - TCP listener (thread-socket)
-- `RpcCompletionSignaling` - RPC completion tokens (process-rpc)
+- `ChannelWorkerSynchronization` - Tokio channels (task-channels)
+- `SocketWorkerSynchronization` - TCP listener (thread-socket)
+- `GrpcWorkerSynchronization` - RPC completion tokens (process-rpc)
 
 ---
 
@@ -222,22 +223,22 @@ The `Executor` implements the core MapReduce coordinator logic with:
 pub struct Executor<W, CS, F>
 where
     W: Worker,
-    CS: CompletionSignaling,
+    CS: WorkerSynchronization,
     F: WorkerFactory<W>,
 {
     // ...
 }
 
 impl<W, CS, F> Executor<W, CS, F> {
-    pub async fn execute<A>(
+    pub async fn execute<SD>(
         &mut self,
-        assignments: Vec<A>,
-        num_workers: usize,
-        shutdown: &impl ShutdownSignal,
-    ) -> Result<(), ExecutorError<W::Error>>
+        mut workers: Vec<W>,
+        assignments: Vec<W::Assignment>,
+        shutdown_signal: &SD,
+    ) -> Vec<W>
     where
-        A: Clone + Send,
-        W: Worker<Assignment = A>,
+        SD: ShutdownSignal + Sync,
+        W::Assignment: Clone,
     {
         // Coordinator algorithm with fault tolerance
     }
@@ -246,7 +247,7 @@ impl<W, CS, F> Executor<W, CS, F> {
 
 **Key Features**:
 - Distributes work to N workers
-- Waits for completions using `CompletionSignaling`
+- Waits for completions using `WorkerSynchronization`
 - Detects failures via completion signals
 - Detects stragglers via configurable timeout
 - Reassigns work to new workers
@@ -273,10 +274,10 @@ let reducer_factory = ReducerFactory::new(/* ... */);
 
 // 3. Execute (same code for all implementations!)
 let mut map_executor = Executor::new(mapper_factory, timeout_ms);
-map_executor.execute(map_assignments, num_mappers, &shutdown).await?;
+let mappers = map_executor.execute(mappers, map_assignments, &shutdown).await;
 
 let mut reduce_executor = Executor::new(reducer_factory, timeout_ms);
-reduce_executor.execute(reduce_assignments, num_reducers, &shutdown).await?;
+let reducers = reduce_executor.execute(reducers, reduce_assignments, &shutdown).await;
 ```
 
 **The implementation details are hidden behind the traits.**

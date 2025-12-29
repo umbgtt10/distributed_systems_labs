@@ -5,6 +5,7 @@ Write-Host "=== MapReduce Process-RPC Launcher ===" -ForegroundColor Cyan
 # 1. Cleanup pending processes
 Write-Host "`n[1/3] Cleaning up pending processes..." -ForegroundColor Yellow
 Stop-Process -Name "process-rpc" -Force -ErrorAction SilentlyContinue
+Stop-Process -Name "map-reduce-process-rpc" -Force -ErrorAction SilentlyContinue
 Write-Host "Cleanup complete." -ForegroundColor Green
 
 # 2. Check/Install Protobuf

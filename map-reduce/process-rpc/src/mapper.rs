@@ -1,5 +1,6 @@
 use crate::grpc_completion_signaling::GrpcCompletionToken;
 use crate::grpc_work_channel::{GrpcWorkChannel, GrpcWorkReceiver};
+use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
@@ -47,6 +48,7 @@ impl<P, S, R, SD> MapperFactory<P, S, R, SD> {
     }
 }
 
+#[async_trait]
 impl<P, S, R, SD>
     WorkerFactory<
         Mapper<
@@ -75,14 +77,13 @@ where
         + Sync
         + 'static,
 {
-    fn create_worker(
+    async fn create_worker(
         &mut self,
         id: usize,
     ) -> Mapper<P, S, GrpcWorkChannel<<P as MapReduceJob>::MapAssignment, GrpcCompletionToken>, R, SD>
     {
         let port = crate::config::MAPPER_BASE_PORT + id as u16;
-        let work_channel = GrpcWorkChannel::new(format!("127.0.0.1:{}", port));
-        let work_rx = GrpcWorkReceiver::new(port);
+        let (work_channel, work_rx) = GrpcWorkChannel::create_pair(port).await;
 
         map_reduce_core::mapper::Mapper::new(
             id,

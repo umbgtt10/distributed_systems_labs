@@ -1,5 +1,6 @@
 use crate::channel_wrappers::{ChannelCompletionSender, ChannelWorkReceiver};
 use crate::mpsc_work_channel::MpscWorkChannel;
+use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::reducer::ReducerTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
@@ -46,6 +47,7 @@ impl<P, S, R, SD> ReducerFactory<P, S, R, SD> {
     }
 }
 
+#[async_trait]
 impl<P, S, R, SD>
     WorkerFactory<
         Reducer<
@@ -74,7 +76,7 @@ where
         + Sync
         + 'static,
 {
-    fn create_worker(
+    async fn create_worker(
         &mut self,
         id: usize,
     ) -> Reducer<

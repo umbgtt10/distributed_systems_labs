@@ -159,11 +159,13 @@ async fn run_coordinator() {
     );
 
     // Initialize mapper phase
-    let (mappers, mut mapper_executor) = initialize_phase::<MapperType, GrpcCompletionSignaling, _>(
-        config.num_mappers,
-        mapper_factory,
-        config.mapper_timeout_ms,
-    );
+    let (mappers, mut mapper_executor) =
+        initialize_phase::<MapperType, GrpcCompletionSignaling, _>(
+            config.num_mappers,
+            mapper_factory,
+            config.mapper_timeout_ms,
+        )
+        .await;
 
     println!("Workers initialized, starting map phase...");
 
@@ -187,7 +189,8 @@ async fn run_coordinator() {
             config.num_reducers,
             reducer_factory,
             config.reducer_timeout_ms,
-        );
+        )
+        .await;
 
     println!("Reducers initialized, starting reduce phase...");
 

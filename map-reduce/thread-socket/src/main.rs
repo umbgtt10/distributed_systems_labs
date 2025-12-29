@@ -84,11 +84,13 @@ async fn main() {
     );
 
     // Initialize mapper phase
-    let (mappers, mut mapper_executor) = initialize_phase::<MapperType, SocketCompletionSignaling, _>(
-        config.num_mappers,
-        mapper_factory,
-        config.mapper_timeout_ms,
-    );
+    let (mappers, mut mapper_executor) =
+        initialize_phase::<MapperType, SocketCompletionSignaling, _>(
+            config.num_mappers,
+            mapper_factory,
+            config.mapper_timeout_ms,
+        )
+        .await;
 
     // Create reducer factory
     let reducer_factory = ReducerFactory::<
@@ -110,7 +112,8 @@ async fn main() {
             config.num_reducers,
             reducer_factory,
             config.reducer_timeout_ms,
-        );
+        )
+        .await;
 
     // Run map phase
     println!("\n=== MAP PHASE ===");

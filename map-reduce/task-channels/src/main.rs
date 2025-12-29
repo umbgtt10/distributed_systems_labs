@@ -75,7 +75,8 @@ async fn main() {
             config.num_mappers,
             mapper_factory,
             config.mapper_timeout_ms,
-        );
+        )
+        .await;
 
     // Define reducer type
     type ReducerType = Reducer<
@@ -109,7 +110,8 @@ async fn main() {
             config.num_reducers,
             reducer_factory,
             config.reducer_timeout_ms,
-        );
+        )
+        .await;
 
     // Setup Ctrl+C handler
     let ctrl_c_token = cancel_token.clone();

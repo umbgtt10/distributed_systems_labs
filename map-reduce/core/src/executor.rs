@@ -119,7 +119,7 @@ where
                         // Replace worker
                         let failed_worker = mem::replace(
                             &mut workers[worker_id],
-                            self.worker_factory.create_worker(worker_id),
+                            self.worker_factory.create_worker(worker_id).await,
                         );
                         drop(failed_worker);
 
@@ -188,7 +188,7 @@ where
                                     // Replace worker
                                     let failed_worker = mem::replace(
                                         &mut workers[worker_id],
-                                        self.worker_factory.create_worker(worker_id),
+                                        self.worker_factory.create_worker(worker_id).await,
                                     );
                                     drop(failed_worker);
 

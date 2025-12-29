@@ -13,6 +13,6 @@
   "reducer_straggler_probability": 2,
   "mapper_straggler_delay_ms": 2000,
   "reducer_straggler_delay_ms": 2000,
-  "mapper_timeout_ms": 500,
-  "reducer_timeout_ms": 1000
+  "mapper_timeout_ms": 2000,
+  "reducer_timeout_ms": 2000
 }

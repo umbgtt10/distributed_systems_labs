@@ -1,5 +1,6 @@
 use crate::socket_completion_signaling::SocketCompletionToken;
 use crate::socket_work_channel::{SocketWorkChannel, SocketWorkReceiver};
+use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
 use map_reduce_core::shutdown_signal::ShutdownSignal;
@@ -7,6 +8,7 @@ use map_reduce_core::state_access::StateAccess;
 use map_reduce_core::worker_factory::WorkerFactory;
 use map_reduce_core::worker_runtime::WorkerRuntime;
 use std::marker::PhantomData;
+
 pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     P,
     S,
@@ -45,6 +47,7 @@ impl<P, S, R, SD> MapperFactory<P, S, R, SD> {
     }
 }
 
+#[async_trait]
 impl<P, S, R, SD>
     WorkerFactory<
         Mapper<
@@ -73,7 +76,7 @@ where
         + Sync
         + 'static,
 {
-    fn create_worker(
+    async fn create_worker(
         &mut self,
         id: usize,
     ) -> Mapper<

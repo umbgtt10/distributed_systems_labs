@@ -8,6 +8,11 @@ Write-Host "Starting stress test..." -ForegroundColor Cyan
 
 # 1. Build all projects first
 foreach ($project in $projects) {
+    # Kill any lingering processes that might lock the executable
+    $exeName = "map-reduce-$project"
+    Stop-Process -Name $exeName -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 200 # Give OS time to release file locks
+
     $projectDir = Join-Path $rootDir $project
     Write-Host "`nBuilding Project: $project" -ForegroundColor Yellow
 

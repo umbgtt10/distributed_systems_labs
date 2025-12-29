@@ -45,7 +45,7 @@ pub fn generate_test_data(config: &Config) -> (Vec<String>, Vec<String>) {
     (data, targets)
 }
 
-pub fn initialize_phase<W, S, F>(
+pub async fn initialize_phase<W, S, F>(
     num_workers: usize,
     mut factory: F,
     timeout_ms: u64,
@@ -57,7 +57,7 @@ where
 {
     let mut workers = Vec::with_capacity(num_workers);
     for id in 0..num_workers {
-        workers.push(factory.create_worker(id));
+        workers.push(factory.create_worker(id).await);
     }
 
     let executor = Executor::new(factory, timeout_ms);

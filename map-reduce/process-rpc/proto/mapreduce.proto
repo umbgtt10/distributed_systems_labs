@@ -12,11 +12,13 @@ service StateService {
 
 // Work Service - Receives work assignments from coordinator
 service WorkService {
+  rpc InitializeWorker(InitializeWorkerRequest) returns (WorkAck);
   rpc ReceiveWork(WorkMessage) returns (WorkAck);
 }
 
-// Completion Service - Workers report completion to coordinator
-service CompletionService {
+// Synchronization Service - Workers report status (ready/done) to coordinator
+service SynchronizationService {
+  rpc RegisterWorker(RegisterWorkerRequest) returns (RegisterWorkerResponse);
   rpc ReportCompletion(CompletionMessage) returns (CompletionAck);
 }
 
@@ -49,6 +51,10 @@ message StateResponse {
 }
 
 // Work Service Messages
+message InitializeWorkerRequest {
+  string synchronization_token_json = 1;
+}
+
 message WorkMessage {
   string assignment_json = 1;  // JSON-serialized assignment (hybrid approach)
   string completion_json = 2;  // JSON-serialized completion token
@@ -58,7 +64,16 @@ message WorkAck {
   bool received = 1;
 }
 
-// Completion Service Messages
+// Synchronization Service Messages
+message RegisterWorkerRequest {
+  uint64 worker_id = 1;
+}
+
+message RegisterWorkerResponse {
+  bool success = 1;
+  string error = 2;
+}
+
 message CompletionMessage {
   uint64 worker_id = 1;
   bool success = 2;

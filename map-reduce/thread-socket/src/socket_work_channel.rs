@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use map_reduce_core::work_channel::WorkDistributor;
-use map_reduce_core::worker_io::WorkReceiver;
+use map_reduce_core::worker_io::{WorkReceiver, WorkerMessage};
 use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::marker::PhantomData;
@@ -46,11 +46,25 @@ where
     A: Clone + Send + Serialize + 'static,
     C: Clone + Send + Serialize + 'static,
 {
+    fn initialize(&self, token: C) {
+        let addr = self.addr.clone();
+        thread::spawn(move || {
+            if let Ok(mut stream) = std::net::TcpStream::connect(addr.as_str()) {
+                let message = WorkerMessage::<A, C>::Initialize(token);
+                if let Ok(serialized) = serde_json::to_vec(&message) {
+                    let len = serialized.len() as u32;
+                    let _ = stream.write_all(&len.to_be_bytes());
+                    let _ = stream.write_all(&serialized);
+                }
+            }
+        });
+    }
+
     fn send_work(&self, assignment: A, completion: C) {
         let addr = self.addr.clone();
         thread::spawn(move || {
             if let Ok(mut stream) = std::net::TcpStream::connect(addr.as_str()) {
-                let message = (assignment, completion);
+                let message = WorkerMessage::Work(assignment, completion);
                 if let Ok(serialized) = serde_json::to_vec(&message) {
                     let len = serialized.len() as u32;
                     let _ = stream.write_all(&len.to_be_bytes());
@@ -73,7 +87,7 @@ where
     A: for<'de> Deserialize<'de> + Send,
     C: for<'de> Deserialize<'de> + Send,
 {
-    async fn recv(&mut self) -> Option<(A, C)> {
+    async fn recv(&mut self) -> Option<WorkerMessage<A, C>> {
         if let Ok((mut stream, _)) = self.listener.accept().await {
             let mut len_bytes = [0u8; 4];
             if stream.read_exact(&mut len_bytes).await.is_ok() {
@@ -89,4 +103,3 @@ where
         None
     }
 }
-

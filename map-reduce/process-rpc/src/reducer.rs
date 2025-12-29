@@ -1,4 +1,4 @@
-use crate::grpc_completion_signaling::GrpcCompletionToken;
+use crate::grpc_completion_signaling::GrpcSynchronizationToken;
 use crate::grpc_work_channel::{GrpcWorkChannel, GrpcWorkReceiver};
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
@@ -16,8 +16,8 @@ pub type Reducer<P, S, W, R, SD> = map_reduce_core::reducer::Reducer<
     W,
     R,
     SD,
-    GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcCompletionToken>,
-    GrpcCompletionToken,
+    GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
+    GrpcSynchronizationToken,
 >;
 
 pub struct ReducerFactory<P, S, R, SD> {
@@ -54,7 +54,7 @@ impl<P, S, R, SD>
         Reducer<
             P,
             S,
-            GrpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, GrpcCompletionToken>,
+            GrpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
             R,
             SD,
         >,
@@ -69,8 +69,8 @@ where
                 P,
                 S,
                 SD,
-                GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcCompletionToken>,
-                GrpcCompletionToken,
+                GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
+                GrpcSynchronizationToken,
             >,
         > + Clone
         + Send
@@ -83,7 +83,7 @@ where
     ) -> Reducer<
         P,
         S,
-        GrpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, GrpcCompletionToken>,
+        GrpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
         R,
         SD,
     > {

@@ -2,7 +2,7 @@ use crate::map_reduce_job::MapReduceJob;
 use crate::shutdown_signal::ShutdownSignal;
 use crate::state_access::StateAccess;
 use crate::work_channel::WorkDistributor;
-use crate::worker_io::{CompletionSender, WorkReceiver};
+use crate::worker_io::{SynchronizationSender, WorkReceiver, WorkerMessage};
 use crate::worker_runtime::{WorkerRuntime, WorkerTask};
 use async_trait::async_trait;
 use rand::Rng;
@@ -35,7 +35,7 @@ where
     S: StateAccess + Send + Sync + 'static,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::MapAssignment, CS> + 'static,
-    CS: CompletionSender + 'static,
+    CS: SynchronizationSender + 'static,
 {
     type Output = ();
 
@@ -52,7 +52,14 @@ where
                 tokio::time::timeout(Duration::from_millis(100), self.work_rx.recv()).await;
 
             match work_result {
-                Ok(Some((assignment, completion_sender))) => {
+                Ok(Some(WorkerMessage::Initialize(token))) => {
+                    if token.register(self.id).await {
+                        println!("Mapper {} registered", self.id);
+                    } else {
+                        eprintln!("Mapper {} failed to register", self.id);
+                    }
+                }
+                Ok(Some(WorkerMessage::Work(assignment, completion_sender))) => {
                     // Simulate random failure
                     if self.failure_probability > 0 {
                         let random_value = rand::rng().random_range(0..100);
@@ -115,7 +122,7 @@ where
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal,
     WR: WorkReceiver<P::MapAssignment, CS>,
-    CS: CompletionSender,
+    CS: SynchronizationSender,
 {
     work_channel: W,
     task_handle: R::Handle,
@@ -130,7 +137,7 @@ where
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::MapAssignment, CS> + 'static,
-    CS: CompletionSender + 'static,
+    CS: SynchronizationSender + 'static,
 {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -176,11 +183,15 @@ where
     R: WorkerRuntime<MapperTask<P, S, SD, WR, CS>>,
     SD: ShutdownSignal + Send + 'static,
     WR: WorkReceiver<P::MapAssignment, CS> + 'static,
-    CS: CompletionSender + 'static,
+    CS: SynchronizationSender + 'static,
 {
     type Assignment = P::MapAssignment;
     type Completion = CS;
     type Error = R::Error;
+
+    fn initialize(&self, token: Self::Completion) {
+        self.work_channel.initialize(token);
+    }
 
     fn send_work(&self, assignment: Self::Assignment, complete_tx: Self::Completion) {
         self.work_channel.send_work(assignment, complete_tx);

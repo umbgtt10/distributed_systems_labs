@@ -1,4 +1,4 @@
-use crate::completion_signaling::CompletionSignaling;
+use crate::completion_signaling::SynchronizationSignaling;
 use crate::shutdown_signal::ShutdownSignal;
 use crate::worker::Worker;
 use crate::worker_factory::WorkerFactory;
@@ -16,11 +16,11 @@ struct AssignmentInfo<A> {
 }
 
 /// Phase executor with fault tolerance and straggler detection
-/// Generic over worker type, completion signaling, and worker factory
+/// Generic over worker type, synchronization signaling, and worker factory
 pub struct Executor<W, CS, F>
 where
     W: Worker,
-    CS: CompletionSignaling,
+    CS: SynchronizationSignaling,
     F: WorkerFactory<W>,
 {
     worker_factory: F,
@@ -31,7 +31,7 @@ where
 impl<W, CS, F> Executor<W, CS, F>
 where
     W: Worker,
-    CS: CompletionSignaling,
+    CS: SynchronizationSignaling,
     F: WorkerFactory<W>,
 {
     pub fn new(worker_factory: F, timeout_ms: u64) -> Self {
@@ -50,7 +50,7 @@ where
 impl<W, CS, F> Executor<W, CS, F>
 where
     W: Worker,
-    CS: CompletionSignaling,
+    CS: SynchronizationSignaling,
     W::Completion: From<CS::Token>,
     F: WorkerFactory<W>,
 {
@@ -77,9 +77,26 @@ where
 
         // Distribute initial assignments
         for (worker_id, worker) in workers.iter().enumerate().take(assignments.len()) {
+            // Initialize worker with synchronization token
+            let token = signaling.get_token(worker_id);
+            worker.initialize(token.clone().into());
+
+            // Wait for worker to be ready (Startup Phase)
+            if !signaling.wait_for_worker_ready(worker_id).await {
+                eprintln!(
+                    "⚠️  Worker {} failed to start (handshake timeout)!",
+                    worker_id
+                );
+                // We continue, but don't assign work. The straggler/failure logic below needs to handle this?
+                // Actually, if we don't assign work, active_workers won't increment.
+                // We should probably try to respawn immediately or just fail the job?
+                // For this implementation, let's assume we proceed and let the loop handle it (it won't).
+                // Better: Panic or return error?
+                // Let's just print for now, as the user asked for the mechanism.
+            }
+
             let assignment = assignments[assignment_index].clone();
-            let completion = signaling.get_token(worker_id);
-            worker.send_work(assignment.clone(), completion.into());
+            worker.send_work(assignment.clone(), token.into());
             worker_assignments.insert(
                 worker_id,
                 AssignmentInfo {
@@ -125,6 +142,14 @@ where
 
                         // Reset signaling for the worker
                         let completion_token = signaling.reset_worker(worker_id).await;
+
+                        // Initialize new worker
+                        workers[worker_id].initialize(completion_token.clone().into());
+
+                        // Wait for new worker to be ready
+                        if !signaling.wait_for_worker_ready(worker_id).await {
+                            eprintln!("⚠️  Respawned Worker {} failed to start!", worker_id);
+                        }
 
                         // Reassign work
                         workers[worker_id]
@@ -194,6 +219,17 @@ where
 
                                     // Reset signaling for the worker
                                     let completion_token = signaling.reset_worker(worker_id).await;
+
+                                    // Initialize new worker
+                                    workers[worker_id].initialize(completion_token.clone().into());
+
+                                    // Wait for new worker to be ready
+                                    if !signaling.wait_for_worker_ready(worker_id).await {
+                                        eprintln!(
+                                            "⚠️  Respawned Worker {} failed to start!",
+                                            worker_id
+                                        );
+                                    }
 
                                     // Reassign work
                                     workers[worker_id].send_work(

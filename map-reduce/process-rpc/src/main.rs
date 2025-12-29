@@ -9,7 +9,7 @@ mod reducer;
 pub mod rpc;
 
 use clap::Parser;
-use grpc_completion_signaling::GrpcCompletionSignaling;
+use grpc_completion_signaling::{GrpcSynchronizationSignaling, GrpcSynchronizationToken};
 use grpc_state_access::GrpcStateAccess;
 use grpc_state_server::start_state_server;
 use map_reduce_core::config::Config;
@@ -72,9 +72,9 @@ async fn run_worker(cli: Cli) {
                 DummyShutdownSignal,
                 grpc_work_channel::GrpcWorkReceiver<
                     <WordSearchProblem as MapReduceJob>::MapAssignment,
-                    grpc_completion_signaling::GrpcCompletionToken,
+                    GrpcSynchronizationToken,
                 >,
-                grpc_completion_signaling::GrpcCompletionToken,
+                GrpcSynchronizationToken,
             > = serde_json::from_str(&task_json).expect("Failed to deserialize mapper task");
             task.run().await;
         }
@@ -85,9 +85,9 @@ async fn run_worker(cli: Cli) {
                 DummyShutdownSignal,
                 grpc_work_channel::GrpcWorkReceiver<
                     <WordSearchProblem as MapReduceJob>::ReduceAssignment,
-                    grpc_completion_signaling::GrpcCompletionToken,
+                    GrpcSynchronizationToken,
                 >,
-                grpc_completion_signaling::GrpcCompletionToken,
+                GrpcSynchronizationToken,
             > = serde_json::from_str(&task_json).expect("Failed to deserialize reducer task");
             task.run().await;
         }
@@ -127,7 +127,7 @@ async fn run_coordinator() {
         GrpcStateAccess,
         grpc_work_channel::GrpcWorkChannel<
             <WordSearchProblem as MapReduceJob>::MapAssignment,
-            grpc_completion_signaling::GrpcCompletionToken,
+            GrpcSynchronizationToken,
         >,
         MapperProcessRuntime,
         DummyShutdownSignal,
@@ -138,7 +138,7 @@ async fn run_coordinator() {
         GrpcStateAccess,
         grpc_work_channel::GrpcWorkChannel<
             <WordSearchProblem as MapReduceJob>::ReduceAssignment,
-            grpc_completion_signaling::GrpcCompletionToken,
+            GrpcSynchronizationToken,
         >,
         ReducerProcessRuntime,
         DummyShutdownSignal,
@@ -160,7 +160,7 @@ async fn run_coordinator() {
 
     // Initialize mapper phase
     let (mappers, mut mapper_executor) =
-        initialize_phase::<MapperType, GrpcCompletionSignaling, _>(
+        initialize_phase::<MapperType, GrpcSynchronizationSignaling, _>(
             config.num_mappers,
             mapper_factory,
             config.mapper_timeout_ms,
@@ -185,7 +185,7 @@ async fn run_coordinator() {
 
     // Initialize reducer phase
     let (reducers, mut reducer_executor) =
-        initialize_phase::<ReducerType, GrpcCompletionSignaling, _>(
+        initialize_phase::<ReducerType, GrpcSynchronizationSignaling, _>(
             config.num_reducers,
             reducer_factory,
             config.reducer_timeout_ms,

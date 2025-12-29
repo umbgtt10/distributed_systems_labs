@@ -7,6 +7,9 @@ pub trait Worker: Send {
     type Completion;
     type Error: Display;
 
+    /// Initialize the worker with a synchronization token
+    fn initialize(&self, token: Self::Completion);
+
     /// Send a work assignment to this worker
     fn send_work(&self, assignment: Self::Assignment, complete_tx: Self::Completion);
 

@@ -1,4 +1,4 @@
-use crate::grpc_completion_signaling::GrpcCompletionToken;
+use crate::grpc_completion_signaling::GrpcSynchronizationToken;
 use crate::grpc_work_channel::{GrpcWorkChannel, GrpcWorkReceiver};
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
@@ -16,8 +16,8 @@ pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     W,
     R,
     SD,
-    GrpcWorkReceiver<<P as MapReduceJob>::MapAssignment, GrpcCompletionToken>,
-    GrpcCompletionToken,
+    GrpcWorkReceiver<<P as MapReduceJob>::MapAssignment, GrpcSynchronizationToken>,
+    GrpcSynchronizationToken,
 >;
 
 pub struct MapperFactory<P, S, R, SD> {
@@ -54,7 +54,7 @@ impl<P, S, R, SD>
         Mapper<
             P,
             S,
-            GrpcWorkChannel<<P as MapReduceJob>::MapAssignment, GrpcCompletionToken>,
+            GrpcWorkChannel<<P as MapReduceJob>::MapAssignment, GrpcSynchronizationToken>,
             R,
             SD,
         >,
@@ -69,8 +69,8 @@ where
                 P,
                 S,
                 SD,
-                GrpcWorkReceiver<<P as MapReduceJob>::MapAssignment, GrpcCompletionToken>,
-                GrpcCompletionToken,
+                GrpcWorkReceiver<<P as MapReduceJob>::MapAssignment, GrpcSynchronizationToken>,
+                GrpcSynchronizationToken,
             >,
         > + Clone
         + Send
@@ -80,8 +80,13 @@ where
     async fn create_worker(
         &mut self,
         id: usize,
-    ) -> Mapper<P, S, GrpcWorkChannel<<P as MapReduceJob>::MapAssignment, GrpcCompletionToken>, R, SD>
-    {
+    ) -> Mapper<
+        P,
+        S,
+        GrpcWorkChannel<<P as MapReduceJob>::MapAssignment, GrpcSynchronizationToken>,
+        R,
+        SD,
+    > {
         let port = crate::config::MAPPER_BASE_PORT + id as u16;
         let (work_channel, work_rx) = GrpcWorkChannel::create_pair(port).await;
 

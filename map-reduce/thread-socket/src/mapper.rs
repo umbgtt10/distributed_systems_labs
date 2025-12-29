@@ -1,5 +1,6 @@
-use crate::socket_work_sender::{SocketWorkReceiver, SocketWorkSender};
-use crate::socket_worker_synchonization::SocketCompletionToken;
+use crate::socket_status_sender::SocketStatusSender;
+use crate::socket_work_receiver::SocketWorkReceiver;
+use crate::socket_work_sender::SocketWorkSender;
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::mapper::MapperTask;
@@ -15,8 +16,8 @@ pub type Mapper<P, S, W, R, SD> = map_reduce_core::mapper::Mapper<
     W,
     R,
     SD,
-    SocketWorkReceiver<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
-    SocketCompletionToken,
+    SocketWorkReceiver<<P as MapReduceJob>::MapAssignment, SocketStatusSender>,
+    SocketStatusSender,
 >;
 
 pub struct MapperFactory<P, S, R, SD> {
@@ -53,7 +54,7 @@ impl<P, S, R, SD>
         Mapper<
             P,
             S,
-            SocketWorkSender<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
+            SocketWorkSender<<P as MapReduceJob>::MapAssignment, SocketStatusSender>,
             R,
             SD,
         >,
@@ -68,8 +69,8 @@ where
                 P,
                 S,
                 SD,
-                SocketWorkReceiver<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
-                SocketCompletionToken,
+                SocketWorkReceiver<<P as MapReduceJob>::MapAssignment, SocketStatusSender>,
+                SocketStatusSender,
             >,
         > + Clone
         + Send
@@ -79,13 +80,8 @@ where
     async fn create_worker(
         &mut self,
         id: usize,
-    ) -> Mapper<
-        P,
-        S,
-        SocketWorkSender<<P as MapReduceJob>::MapAssignment, SocketCompletionToken>,
-        R,
-        SD,
-    > {
+    ) -> Mapper<P, S, SocketWorkSender<<P as MapReduceJob>::MapAssignment, SocketStatusSender>, R, SD>
+    {
         let (work_channel, work_rx) = SocketWorkSender::create_pair(0);
 
         map_reduce_core::mapper::Mapper::new(

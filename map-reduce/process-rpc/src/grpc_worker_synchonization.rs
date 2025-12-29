@@ -1,77 +1,12 @@
+use crate::grpc_status_sender::GrpcStatusSender;
 use crate::rpc::proto;
-use async_trait::async_trait;
-use map_reduce_core::status_sender::StatusSender;
 use map_reduce_core::worker_synchronization::WorkerSynchronization;
-use proto::synchronization_service_client::SynchronizationServiceClient;
-use proto::synchronization_service_server::{
-    SynchronizationService as SynchronizationServiceTrait, SynchronizationServiceServer,
-};
+use proto::synchronization_service_server::{SynchronizationService, SynchronizationServiceServer};
 use proto::{CompletionAck, CompletionMessage, RegisterWorkerRequest, RegisterWorkerResponse};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio::sync::Notify;
-use tonic::transport::{Channel, Server};
+use tonic::transport::Server;
 use tonic::{Request, Response, Status};
-
-/// gRPC Synchronization Token
-/// Sent to workers to report completion back to coordinator
-#[derive(Clone, Serialize, Deserialize, Default)]
-pub struct GrpcSynchronizationToken {
-    server_addr: String,
-    worker_id: usize,
-}
-
-#[async_trait]
-impl StatusSender for GrpcSynchronizationToken {
-    async fn register(&self, _worker_id: usize) -> bool {
-        let endpoint = format!("http://{}", self.server_addr);
-
-        // Retry logic for connecting to coordinator
-        for _ in 0..5 {
-            if let Ok(channel) = Channel::from_shared(endpoint.clone())
-                .unwrap()
-                .connect()
-                .await
-            {
-                let mut client = SynchronizationServiceClient::new(channel);
-                let request = tonic::Request::new(RegisterWorkerRequest {
-                    worker_id: self.worker_id as u64,
-                });
-
-                if client.register_worker(request).await.is_ok() {
-                    return true;
-                }
-            }
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-        false
-    }
-
-    async fn send(&self, result: Result<usize, ()>) -> bool {
-        let endpoint = format!("http://{}", self.server_addr);
-
-        // Retry logic for connecting to coordinator
-        for _ in 0..5 {
-            if let Ok(channel) = Channel::from_shared(endpoint.clone())
-                .unwrap()
-                .connect()
-                .await
-            {
-                let mut client = SynchronizationServiceClient::new(channel);
-                let request = tonic::Request::new(CompletionMessage {
-                    worker_id: self.worker_id as u64,
-                    success: result.is_ok(),
-                });
-
-                if client.report_completion(request).await.is_ok() {
-                    return true;
-                }
-            }
-            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-        }
-        false
-    }
-}
 
 /// gRPC Synchronization Service implementation
 struct SynchronizationServiceImpl {
@@ -80,7 +15,7 @@ struct SynchronizationServiceImpl {
 }
 
 #[tonic::async_trait]
-impl SynchronizationServiceTrait for SynchronizationServiceImpl {
+impl SynchronizationService for SynchronizationServiceImpl {
     async fn register_worker(
         &self,
         request: Request<RegisterWorkerRequest>,
@@ -117,14 +52,14 @@ impl SynchronizationServiceTrait for SynchronizationServiceImpl {
 
 /// gRPC Synchronization Signaling
 /// Coordinator receives completion notifications from workers
-pub struct GrpcSynchronizationSignaling {
+pub struct GrpcWorkerSynchonization {
     completion_rx: tokio::sync::mpsc::Receiver<(usize, bool)>,
     readiness_notifiers: Arc<Vec<Arc<Notify>>>,
     server_addr: String,
 }
 
-impl WorkerSynchronization for GrpcSynchronizationSignaling {
-    type Token = GrpcSynchronizationToken;
+impl WorkerSynchronization for GrpcWorkerSynchonization {
+    type Token = GrpcStatusSender;
 
     fn setup(num_workers: usize) -> Self {
         let (tx, rx) = tokio::sync::mpsc::channel(100);
@@ -174,7 +109,7 @@ impl WorkerSynchronization for GrpcSynchronizationSignaling {
     }
 
     fn get_token(&self, worker_id: usize) -> Self::Token {
-        GrpcSynchronizationToken {
+        GrpcStatusSender {
             server_addr: self.server_addr.clone(),
             worker_id,
         }

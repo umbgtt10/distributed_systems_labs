@@ -1,12 +1,12 @@
-use async_trait::async_trait;
-use map_reduce_core::status_sender::StatusSender;
 use map_reduce_core::worker_synchronization::WorkerSynchronization;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::{StreamExt, StreamMap};
+
+use crate::socket_status_sender::SocketStatusSender;
 
 /// Completion message type
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -16,12 +16,12 @@ pub enum CompletionMessage {
 }
 
 /// Socket-based completion signaling
-pub struct SocketCompletionSignaling {
+pub struct SocketWorkerSynchronization {
     listeners: StreamMap<usize, TcpListenerStream>,
     ports: HashMap<usize, u16>,
 }
 
-impl SocketCompletionSignaling {
+impl SocketWorkerSynchronization {
     pub fn new(num_workers: usize) -> Self {
         let mut listeners = StreamMap::new();
         let mut ports = HashMap::new();
@@ -49,18 +49,18 @@ impl SocketCompletionSignaling {
         Self { listeners, ports }
     }
 
-    pub fn get_sender(&self, worker_id: usize) -> SocketCompletionToken {
+    pub fn get_sender(&self, worker_id: usize) -> SocketStatusSender {
         let port = self
             .ports
             .get(&worker_id)
             .copied()
             .expect("Invalid worker_id");
-        SocketCompletionToken { port, worker_id }
+        SocketStatusSender { port, worker_id }
     }
 }
 
-impl WorkerSynchronization for SocketCompletionSignaling {
-    type Token = SocketCompletionToken;
+impl WorkerSynchronization for SocketWorkerSynchronization {
+    type Token = SocketStatusSender;
 
     fn setup(num_workers: usize) -> Self {
         Self::new(num_workers)
@@ -125,38 +125,5 @@ impl WorkerSynchronization for SocketCompletionSignaling {
             }
         }
         None
-    }
-}
-
-/// Completion sender
-#[derive(Clone, Serialize, Deserialize)]
-pub struct SocketCompletionToken {
-    port: u16,
-    worker_id: usize,
-}
-
-#[async_trait]
-impl StatusSender for SocketCompletionToken {
-    async fn register(&self, _worker_id: usize) -> bool {
-        true
-    }
-
-    async fn send(&self, result: Result<usize, ()>) -> bool {
-        let addr = format!("127.0.0.1:{}", self.port);
-        let message = match result {
-            Ok(id) => CompletionMessage::Success(id),
-            Err(_) => CompletionMessage::Failure(self.worker_id),
-        };
-        if let Ok(mut stream) = tokio::net::TcpStream::connect(&addr).await {
-            if let Ok(serialized) = serde_json::to_vec(&message) {
-                let len = serialized.len() as u32;
-                if stream.write_all(&len.to_be_bytes()).await.is_ok()
-                    && stream.write_all(&serialized).await.is_ok()
-                {
-                    return true;
-                }
-            }
-        }
-        false
     }
 }

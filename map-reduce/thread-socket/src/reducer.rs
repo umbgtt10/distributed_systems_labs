@@ -1,5 +1,6 @@
-use crate::socket_work_sender::{SocketWorkReceiver, SocketWorkSender};
-use crate::socket_worker_synchonization::SocketCompletionToken;
+use crate::socket_status_sender::SocketStatusSender;
+use crate::socket_work_receiver::SocketWorkReceiver;
+use crate::socket_work_sender::SocketWorkSender;
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::reducer::ReducerTask;
@@ -15,8 +16,8 @@ pub type Reducer<P, S, W, R, SD> = map_reduce_core::reducer::Reducer<
     W,
     R,
     SD,
-    SocketWorkReceiver<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
-    SocketCompletionToken,
+    SocketWorkReceiver<<P as MapReduceJob>::ReduceAssignment, SocketStatusSender>,
+    SocketStatusSender,
 >;
 
 pub struct ReducerFactory<P, S, R, SD> {
@@ -53,7 +54,7 @@ impl<P, S, R, SD>
         Reducer<
             P,
             S,
-            SocketWorkSender<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
+            SocketWorkSender<<P as MapReduceJob>::ReduceAssignment, SocketStatusSender>,
             R,
             SD,
         >,
@@ -69,8 +70,8 @@ where
                 P,
                 S,
                 SD,
-                SocketWorkReceiver<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
-                SocketCompletionToken,
+                SocketWorkReceiver<<P as MapReduceJob>::ReduceAssignment, SocketStatusSender>,
+                SocketStatusSender,
             >,
         > + Clone
         + Send
@@ -83,7 +84,7 @@ where
     ) -> Reducer<
         P,
         S,
-        SocketWorkSender<<P as MapReduceJob>::ReduceAssignment, SocketCompletionToken>,
+        SocketWorkSender<<P as MapReduceJob>::ReduceAssignment, SocketStatusSender>,
         R,
         SD,
     > {

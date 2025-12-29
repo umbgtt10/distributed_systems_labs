@@ -4,7 +4,7 @@ use tonic::transport::Server;
 use tonic::{Request, Response, Status};
 
 use crate::rpc::proto;
-use proto::state_service_server::{StateService as StateServiceTrait, StateServiceServer};
+use proto::state_service_server::{StateService, StateServiceServer};
 use proto::{
     GetRequest, GetResponse, InitializeRequest, ReplaceRequest, StateResponse, UpdateRequest,
 };
@@ -23,7 +23,7 @@ impl<S> GrpcStateServer<S> {
 }
 
 #[tonic::async_trait]
-impl<S: StateStore + Send + Sync + 'static> StateServiceTrait for GrpcStateServer<S> {
+impl<S: StateStore + Send + Sync + 'static> StateService for GrpcStateServer<S> {
     async fn initialize(
         &self,
         request: Request<InitializeRequest>,

@@ -1,6 +1,8 @@
 pub mod config;
 mod grpc_state_server;
 mod grpc_state_store;
+mod grpc_status_sender;
+mod grpc_work_receiver;
 mod grpc_work_sender;
 mod grpc_worker_runtime;
 mod grpc_worker_synchonization;
@@ -12,7 +14,7 @@ use clap::Parser;
 use grpc_state_server::start_state_server;
 use grpc_state_store::GrpcStateStore;
 use grpc_worker_runtime::{MapperProcessRuntime, ReducerProcessRuntime};
-use grpc_worker_synchonization::{GrpcSynchronizationSignaling, GrpcSynchronizationToken};
+use grpc_worker_synchonization::GrpcWorkerSynchonization;
 use map_reduce_core::config::Config;
 use map_reduce_core::in_memory_state_store::LocalStateAccess;
 use map_reduce_core::map_reduce_job::MapReduceJob;
@@ -27,6 +29,8 @@ use mapper::{Mapper, MapperFactory};
 use reducer::{Reducer, ReducerFactory};
 use serde::{Deserialize, Serialize};
 use std::time::Instant;
+
+use crate::grpc_status_sender::GrpcStatusSender;
 
 #[derive(Parser)]
 #[command(author, version, about, long_about = None)]
@@ -70,11 +74,11 @@ async fn run_worker(cli: Cli) {
                 WordSearchProblem,
                 GrpcStateStore,
                 DummyShutdownSignal,
-                grpc_work_sender::GrpcWorkReceiver<
-                    <WordSearchProblem as MapReduceJob>::MapAssignment,
-                    GrpcSynchronizationToken,
+                grpc_work_receiver::GrpcWorkReceiver<
+                    <map_reduce_word_search::WordSearchProblem as map_reduce_core::map_reduce_job::MapReduceJob>::MapAssignment,
+                    GrpcStatusSender,
                 >,
-                GrpcSynchronizationToken,
+                GrpcStatusSender
             > = serde_json::from_str(&task_json).expect("Failed to deserialize mapper task");
             task.run().await;
         }
@@ -83,11 +87,11 @@ async fn run_worker(cli: Cli) {
                 WordSearchProblem,
                 GrpcStateStore,
                 DummyShutdownSignal,
-                grpc_work_sender::GrpcWorkReceiver<
-                    <WordSearchProblem as MapReduceJob>::ReduceAssignment,
-                    GrpcSynchronizationToken,
+                grpc_work_receiver::GrpcWorkReceiver<
+                    <map_reduce_word_search::WordSearchProblem as map_reduce_core::map_reduce_job::MapReduceJob>::ReduceAssignment,
+                    GrpcStatusSender,
                 >,
-                GrpcSynchronizationToken,
+                GrpcStatusSender,
             > = serde_json::from_str(&task_json).expect("Failed to deserialize reducer task");
             task.run().await;
         }
@@ -125,9 +129,9 @@ async fn run_coordinator() {
     type MapperType = Mapper<
         WordSearchProblem,
         GrpcStateStore,
-        grpc_work_sender::GrpcWorkChannel<
+        grpc_work_sender::GrpcWorkSender<
             <WordSearchProblem as MapReduceJob>::MapAssignment,
-            GrpcSynchronizationToken,
+            GrpcStatusSender,
         >,
         MapperProcessRuntime,
         DummyShutdownSignal,
@@ -136,9 +140,9 @@ async fn run_coordinator() {
     type ReducerType = Reducer<
         WordSearchProblem,
         GrpcStateStore,
-        grpc_work_sender::GrpcWorkChannel<
+        grpc_work_sender::GrpcWorkSender<
             <WordSearchProblem as MapReduceJob>::ReduceAssignment,
-            GrpcSynchronizationToken,
+            GrpcStatusSender,
         >,
         ReducerProcessRuntime,
         DummyShutdownSignal,
@@ -160,7 +164,7 @@ async fn run_coordinator() {
 
     // Initialize mapper phase
     let (mappers, mut mapper_executor) =
-        initialize_phase::<MapperType, GrpcSynchronizationSignaling, _>(
+        initialize_phase::<MapperType, GrpcWorkerSynchonization, _>(
             config.num_mappers,
             mapper_factory,
             config.mapper_timeout_ms,
@@ -185,7 +189,7 @@ async fn run_coordinator() {
 
     // Initialize reducer phase
     let (reducers, mut reducer_executor) =
-        initialize_phase::<ReducerType, GrpcSynchronizationSignaling, _>(
+        initialize_phase::<ReducerType, GrpcWorkerSynchonization, _>(
             config.num_reducers,
             reducer_factory,
             config.reducer_timeout_ms,

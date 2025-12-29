@@ -1,9 +1,13 @@
 mod mapper;
 mod reducer;
+mod socket_status_sender;
+mod socket_work_receiver;
 mod socket_work_sender;
 mod socket_worker_runtime;
 mod socket_worker_synchonization;
 
+use crate::socket_status_sender::SocketStatusSender;
+use crate::socket_worker_synchonization::SocketWorkerSynchronization;
 use map_reduce_core::config::Config;
 use map_reduce_core::in_memory_state_store::LocalStateAccess;
 use map_reduce_core::map_reduce_job::MapReduceJob;
@@ -14,7 +18,6 @@ use mapper::{Mapper, MapperFactory};
 use reducer::{Reducer, ReducerFactory};
 use socket_work_sender::SocketWorkSender;
 use socket_worker_runtime::{AtomicShutdownSignal, ThreadRuntime};
-use socket_worker_synchonization::{SocketCompletionSignaling, SocketCompletionToken};
 use std::time::Instant;
 
 #[tokio::main]
@@ -50,7 +53,7 @@ async fn main() {
     type MapperType = Mapper<
         WordSearchProblem,
         LocalStateAccess,
-        SocketWorkSender<<WordSearchProblem as MapReduceJob>::MapAssignment, SocketCompletionToken>,
+        SocketWorkSender<<WordSearchProblem as MapReduceJob>::MapAssignment, SocketStatusSender>,
         ThreadRuntime,
         AtomicShutdownSignal,
     >;
@@ -58,10 +61,7 @@ async fn main() {
     type ReducerType = Reducer<
         WordSearchProblem,
         LocalStateAccess,
-        SocketWorkSender<
-            <WordSearchProblem as MapReduceJob>::ReduceAssignment,
-            SocketCompletionToken,
-        >,
+        SocketWorkSender<<WordSearchProblem as MapReduceJob>::ReduceAssignment, SocketStatusSender>,
         ThreadRuntime,
         AtomicShutdownSignal,
     >;
@@ -82,7 +82,7 @@ async fn main() {
 
     // Initialize mapper phase
     let (mappers, mut mapper_executor) =
-        initialize_phase::<MapperType, SocketCompletionSignaling, _>(
+        initialize_phase::<MapperType, SocketWorkerSynchronization, _>(
             config.num_mappers,
             mapper_factory,
             config.mapper_timeout_ms,
@@ -105,7 +105,7 @@ async fn main() {
 
     // Initialize reducer phase
     let (reducers, mut reducer_executor) =
-        initialize_phase::<ReducerType, SocketCompletionSignaling, _>(
+        initialize_phase::<ReducerType, SocketWorkerSynchronization, _>(
             config.num_reducers,
             reducer_factory,
             config.reducer_timeout_ms,

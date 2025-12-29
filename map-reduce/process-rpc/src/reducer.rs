@@ -1,5 +1,5 @@
-use crate::grpc_work_sender::{GrpcWorkChannel, GrpcWorkReceiver};
-use crate::grpc_worker_synchonization::GrpcSynchronizationToken;
+use crate::grpc_work_sender::GrpcWorkSender;
+use crate::{grpc_status_sender::GrpcStatusSender, grpc_work_receiver::GrpcWorkReceiver};
 use async_trait::async_trait;
 use map_reduce_core::map_reduce_job::MapReduceJob;
 use map_reduce_core::reducer::ReducerTask;
@@ -16,8 +16,8 @@ pub type Reducer<P, S, W, R, SD> = map_reduce_core::reducer::Reducer<
     W,
     R,
     SD,
-    GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
-    GrpcSynchronizationToken,
+    GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcStatusSender>,
+    GrpcStatusSender,
 >;
 
 pub struct ReducerFactory<P, S, R, SD> {
@@ -54,7 +54,7 @@ impl<P, S, R, SD>
         Reducer<
             P,
             S,
-            GrpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
+            GrpcWorkSender<<P as MapReduceJob>::ReduceAssignment, GrpcStatusSender>,
             R,
             SD,
         >,
@@ -69,8 +69,8 @@ where
                 P,
                 S,
                 SD,
-                GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
-                GrpcSynchronizationToken,
+                GrpcWorkReceiver<<P as MapReduceJob>::ReduceAssignment, GrpcStatusSender>,
+                GrpcStatusSender,
             >,
         > + Clone
         + Send
@@ -80,15 +80,10 @@ where
     async fn create_worker(
         &mut self,
         id: usize,
-    ) -> Reducer<
-        P,
-        S,
-        GrpcWorkChannel<<P as MapReduceJob>::ReduceAssignment, GrpcSynchronizationToken>,
-        R,
-        SD,
-    > {
+    ) -> Reducer<P, S, GrpcWorkSender<<P as MapReduceJob>::ReduceAssignment, GrpcStatusSender>, R, SD>
+    {
         let port = crate::config::REDUCER_BASE_PORT + id as u16;
-        let (work_channel, work_rx) = GrpcWorkChannel::create_pair(port).await;
+        let (work_channel, work_rx) = GrpcWorkSender::create_pair(port).await;
 
         map_reduce_core::reducer::Reducer::new(
             id,

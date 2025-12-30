@@ -69,7 +69,6 @@ impl<S: Storage + 'static> KvService for KeyValueServer<S> {
                     message: format!("Key '{}' not found", req.key),
                 })),
             })),
-            Err(e) => Err(Status::internal(e.to_string())),
         }
     }
 }

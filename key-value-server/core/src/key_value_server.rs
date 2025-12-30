@@ -23,7 +23,7 @@ impl<S: Storage + 'static> KvService for KeyValueServer<S> {
     async fn get(&self, request: Request<GetRequest>) -> Result<Response<GetResponse>, Status> {
         let key = request.into_inner().key;
 
-        match self.storage.get(&key) {
+        match self.storage.get(&key).await {
             Ok((value, version)) => Ok(Response::new(GetResponse {
                 result: Some(get_response::Result::Success(GetSuccess { value, version })),
             })),
@@ -45,7 +45,7 @@ impl<S: Storage + 'static> KvService for KeyValueServer<S> {
     async fn put(&self, request: Request<PutRequest>) -> Result<Response<PutResponse>, Status> {
         let req = request.into_inner();
 
-        match self.storage.put(&req.key, req.value, req.version) {
+        match self.storage.put(&req.key, req.value, req.version).await {
             Ok(new_version) => Ok(Response::new(PutResponse {
                 result: Some(put_response::Result::Success(PutSuccess { new_version })),
             })),

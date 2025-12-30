@@ -7,7 +7,6 @@ members = [
     "map-reduce/thread-socket",
     "map-reduce/process-rpc",
     "key-value-server/server-in-memory",
-    "key-value-server/grpc-client",
 ]
 
 [workspace.dependencies]

@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 tokio = { workspace = true }
+async-trait = { workspace = true }
+tokio-util = { workspace = true }
+fastrand = "2.3"
 
 # gRPC dependencies
 tonic = { workspace = true }

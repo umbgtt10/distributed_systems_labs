@@ -354,10 +354,13 @@ checksum = "92ecc6618181def0457392ccd0ee51198e065e016d1d527a7ac1b6dc7c1f09d2"
 name = "key-value-server-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
+ "fastrand",
  "prost",
  "socket2",
  "tokio",
  "tokio-stream",
+ "tokio-util",
  "tonic",
  "tonic-build",
  "tonic-prost",
@@ -365,20 +368,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "key-value-server-grpc-client"
-version = "0.1.0"
-dependencies = [
- "fastrand",
- "key-value-server-core",
- "tokio",
- "tokio-util",
- "tonic",
-]
-
-[[package]]
 name = "key-value-server-in-memory"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "key-value-server-core",
  "tokio",
  "tonic",

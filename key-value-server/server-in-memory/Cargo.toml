@@ -11,3 +11,4 @@ path = "src/main.rs"
 key-value-server-core = { path = "../core" }
 tokio = { workspace = true }
 tonic = { workspace = true }
+async-trait = { workspace = true }

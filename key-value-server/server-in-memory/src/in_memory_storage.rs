@@ -15,17 +15,23 @@ impl InMemoryStorage {
     }
 }
 
+#[async_trait::async_trait]
 impl Storage for InMemoryStorage {
-    fn get(&self, key: &str) -> Result<(String, u64), StorageError> {
-        let data = self.data.blocking_lock();
+    async fn get(&self, key: &str) -> Result<(String, u64), StorageError> {
+        let data = self.data.lock().await;
 
         data.get(key)
             .map(|(value, version)| (value.clone(), *version))
             .ok_or_else(|| StorageError::KeyNotFound(key.to_string()))
     }
 
-    fn put(&self, key: &str, value: String, expected_version: u64) -> Result<u64, StorageError> {
-        let mut data = self.data.blocking_lock();
+    async fn put(
+        &self,
+        key: &str,
+        value: String,
+        expected_version: u64,
+    ) -> Result<u64, StorageError> {
+        let mut data = self.data.lock().await;
 
         if expected_version == 0 {
             // Create new key

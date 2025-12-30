@@ -28,24 +28,24 @@ This workspace uses a **trait-based plugin architecture**:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    Business Logic (Fixed)                    │
-│                   WordSearchProblem trait                    │
-│               (same across all implementations)              │
+│                    Business Logic (Fixed)                   │
+│                   WordSearchProblem trait                   │
+│               (same across all implementations)             │
 └─────────────────────────────────────────────────────────────┘
                               ▲
                               │
 ┌─────────────────────────────────────────────────────────────┐
-│              Core Abstractions (Trait Boundaries)            │
+│              Core Abstractions (Trait Boundaries)           │
 │   StateAccess | WorkChannel | CompletionSignaling | ...     │
 └─────────────────────────────────────────────────────────────┘
                               ▲
                               │
-          ┌───────────────────┼───────────────────┐
-          │                   │                   │
-    ┌─────▼──────┐     ┌──────▼─────┐      ┌──────▼──────┐
-    │task-channels│    │thread-socket│     │process-rpc  │
-    │   (Tokio)   │    │  (OS threads)│    │(Multi-proc) │
-    └─────────────┘    └─────────────┘     └─────────────┘
+          ┌───────────────────┼─────────────────────┐
+          │                   │                     │
+    ┌─────▼───────┐    ┌──────▼───────┐      ┌──────▼──────┐
+    │task-channels│    │thread-socket │      │process-rpc  │
+    │   (Tokio)   │    │  (OS threads)│      │(Multi-proc) │
+    └─────────────┘    └──────────────┘      └─────────────┘
 ```
 
 ---

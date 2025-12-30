@@ -1,13 +1,8 @@
 [workspace]
 resolver = "2"
 members = [
-    "map-reduce/core",
-    "map-reduce/word-search",
-    "map-reduce/task-channels",
-    "map-reduce/thread-socket",
-    "map-reduce/process-rpc",
-    "key-value-server/server-in-memory",
-    "key-value-server/grpc-client",
+    "server-in-memory",
+    "grpc-client",
 ]
 
 [workspace.dependencies]
@@ -26,5 +21,4 @@ prost = "0.14.1"
 tonic-build = "0.14.2"
 tonic-prost-build = "0.14.2"
 
-map-reduce-core = { path = "map-reduce/core" }
-map-reduce-word-search = { path = "map-reduce/word-search" }
+

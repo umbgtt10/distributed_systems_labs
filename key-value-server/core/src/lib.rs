@@ -16,6 +16,9 @@ pub use grpc_client::GrpcClient;
 mod client_config;
 pub use client_config::{ClientConfig, TestConfig};
 
+mod server_runner;
+pub use server_runner::ServerRunner;
+
 pub mod rpc {
     pub mod proto {
         include!("../.generated/kvservice.rs");

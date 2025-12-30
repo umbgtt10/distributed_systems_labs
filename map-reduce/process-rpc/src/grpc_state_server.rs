@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use map_reduce_core::state_store::StateStore;
 use std::sync::Arc;
 use tonic::transport::Server;
@@ -100,3 +104,4 @@ pub async fn start_state_server<S: StateStore + Send + Sync + 'static>(
         _shutdown_tx: shutdown_tx,
     })
 }
+

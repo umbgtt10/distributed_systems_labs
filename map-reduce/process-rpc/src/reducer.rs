@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::grpc_work_sender::GrpcWorkSender;
 use crate::{grpc_status_sender::GrpcStatusSender, grpc_work_receiver::GrpcWorkReceiver};
 use async_trait::async_trait;
@@ -97,3 +101,4 @@ where
         )
     }
 }
+

@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 mod channel_shutdown_signal;
 mod channel_status_sender;
 mod channel_work_receiver;
@@ -197,3 +201,4 @@ async fn main() {
     println!("\n=== PROGRAM COMPLETE ===");
     println!("Total time: {:.2}s", elapsed.as_secs_f64());
 }
+

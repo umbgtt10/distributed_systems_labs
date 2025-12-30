@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum StorageError {
     /// Key was not found (Get on non-existent key, or Put with version > 0 on non-existent key)
@@ -27,3 +31,4 @@ impl std::fmt::Display for StorageError {
 }
 
 impl std::error::Error for StorageError {}
+

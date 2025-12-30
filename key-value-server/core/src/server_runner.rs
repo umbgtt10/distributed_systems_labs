@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::rpc::proto::kv_service_server::KvServiceServer;
 use crate::{GrpcClient, KeyValueServer, PacketLossWrapper, Storage, TestConfig};
 use std::net::SocketAddr;
@@ -130,3 +134,4 @@ impl<S: Storage + Clone + 'static> ServerRunner<S> {
         Ok(())
     }
 }
+

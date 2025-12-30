@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use std::future::Future;
 
 /// Trait for abstracting synchronization signaling mechanisms
@@ -26,3 +30,4 @@ pub trait WorkerSynchronization: Send {
     fn reset_worker(&mut self, worker_id: usize)
         -> impl Future<Output = Self::StatusSender> + Send;
 }
+

@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use async_trait::async_trait;
 use std::fmt::Display;
 use std::future::Future;
@@ -20,3 +24,4 @@ pub trait WorkerRuntime<Task>: Send + 'static {
     /// Wait for the worker to complete
     fn join(handle: Self::Handle) -> impl Future<Output = Result<(), Self::Error>> + Send;
 }
+

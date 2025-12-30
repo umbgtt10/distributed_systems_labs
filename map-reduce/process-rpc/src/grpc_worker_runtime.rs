@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use map_reduce_core::worker_runtime::{WorkerRuntime, WorkerTask};
 use serde::{de::DeserializeOwned, Serialize};
 use std::process::Stdio;
@@ -76,3 +80,4 @@ where
         handle.0.wait().await.map(|_| ())
     }
 }
+

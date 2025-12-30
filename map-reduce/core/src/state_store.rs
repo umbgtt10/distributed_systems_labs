@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use async_trait::async_trait;
 
 /// Trait for accessing shared state across workers
@@ -20,3 +24,4 @@ pub trait StateStore: Clone + Send + Sync + 'static {
     /// Get all values for a key
     async fn get(&self, key: &str) -> Vec<i32>;
 }
+

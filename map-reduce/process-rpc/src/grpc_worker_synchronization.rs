@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::grpc_status_sender::GrpcStatusSender;
 use crate::rpc::proto;
 use map_reduce_core::worker_synchronization::WorkerSynchronization;
@@ -139,3 +143,4 @@ impl WorkerSynchronization for GrpcWorkerSynchronization {
         self.get_status_sender(worker_id)
     }
 }
+

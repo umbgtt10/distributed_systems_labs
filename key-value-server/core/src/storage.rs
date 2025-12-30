@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::StorageError;
 
 /// Trait for abstracting key-value storage with versioning
@@ -28,3 +32,4 @@ pub trait Storage: Send + Sync {
     /// Print all keys with their values and versions (for debugging/shutdown)
     async fn print_all(&self);
 }
+

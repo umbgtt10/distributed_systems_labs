@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 pub mod config;
 mod grpc_shutdown_signal;
 mod grpc_state_server;
@@ -250,3 +254,4 @@ async fn run_coordinator() {
     println!("\n=== PROGRAM COMPLETE ===");
     println!("Total time: {:.2}s", elapsed.as_secs_f64());
 }
+

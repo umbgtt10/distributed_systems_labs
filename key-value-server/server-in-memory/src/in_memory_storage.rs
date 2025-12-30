@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use key_value_server_core::{Storage, StorageError};
 use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
@@ -79,3 +83,4 @@ impl Storage for InMemoryStorage {
         println!("===========================\n");
     }
 }
+

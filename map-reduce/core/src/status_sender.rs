@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use async_trait::async_trait;
 
 /// Trait for sending synchronization signals (readiness and completion) asynchronously
@@ -11,3 +15,4 @@ pub trait StatusSender: Send + Clone + Sync {
     /// Returns true if the signal was sent successfully, false otherwise
     async fn send(&self, result: Result<usize, ()>) -> bool;
 }
+

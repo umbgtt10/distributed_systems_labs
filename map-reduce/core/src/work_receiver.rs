@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use crate::worker_message::WorkerMessage;
 use async_trait::async_trait;
 
@@ -8,3 +12,4 @@ pub trait WorkReceiver<A, C>: Send {
     /// Returns None if the channel is closed
     async fn recv(&mut self) -> Option<WorkerMessage<A, C>>;
 }
+

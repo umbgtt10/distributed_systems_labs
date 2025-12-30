@@ -24,4 +24,7 @@ pub trait Storage: Send + Sync {
         value: String,
         expected_version: u64,
     ) -> Result<u64, StorageError>;
+
+    /// Print all keys with their values and versions (for debugging/shutdown)
+    async fn print_all(&self);
 }

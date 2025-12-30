@@ -47,11 +47,18 @@ Start-Sleep -Seconds 30
 Write-Host ""
 Write-Host "Test duration completed. Shutting down..." -ForegroundColor Yellow
 
-# Stop server (client will stop automatically when server stops)
+# Send Ctrl+C to allow graceful shutdown
 if (!$ServerProcess.HasExited) {
     Write-Host "Stopping server (PID: $($ServerProcess.Id))..." -ForegroundColor Yellow
-    Stop-Process -Id $ServerProcess.Id -Force -ErrorAction SilentlyContinue
-    Start-Sleep -Milliseconds 500
+
+    # Try to send Ctrl+C signal
+    try {
+        [System.Console]::TreatControlCAsInput = $false
+        $ServerProcess.Kill()
+    } catch {
+        # Fallback to force stop
+        Stop-Process -Id $ServerProcess.Id -Force -ErrorAction SilentlyContinue
+    }
 }
 
 Write-Host ""

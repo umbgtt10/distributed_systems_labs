@@ -3,6 +3,7 @@ use std::{collections::HashMap, sync::Arc};
 use tokio::sync::Mutex;
 
 /// In-memory storage implementation using HashMap with Mutex for concurrency
+#[derive(Clone)]
 pub struct InMemoryStorage {
     data: Arc<Mutex<HashMap<String, (String, u64)>>>,
 }
@@ -58,5 +59,23 @@ impl Storage for InMemoryStorage {
                 None => Err(StorageError::KeyNotFound(key.to_string())),
             }
         }
+    }
+
+    async fn print_all(&self) {
+        let data = self.data.lock().await;
+
+        println!("\n=== Final Storage State ===");
+        if data.is_empty() {
+            println!("  No keys in storage");
+        } else {
+            let mut keys: Vec<_> = data.keys().cloned().collect();
+            keys.sort();
+            for key in keys {
+                if let Some((value, version)) = data.get(&key) {
+                    println!("  '{}' -> value='{}', version={}", key, value, version);
+                }
+            }
+        }
+        println!("===========================\n");
     }
 }

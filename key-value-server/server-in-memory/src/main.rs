@@ -2,7 +2,7 @@ mod in_memory_storage;
 
 use crate::in_memory_storage::InMemoryStorage;
 use key_value_server_core::{
-    rpc::proto::kv_service_server::KvServiceServer, GrpcClient, KeyValueServer,
+    rpc::proto::kv_service_server::KvServiceServer, GrpcClient, KeyValueServer, Storage,
 };
 use tonic::transport::Server;
 
@@ -10,6 +10,7 @@ use tonic::transport::Server;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let addr = "127.0.0.1:50051".parse()?;
     let storage = InMemoryStorage::new();
+    let storage_clone = storage.clone();
     let service = KeyValueServer::new(storage);
 
     println!("KV Server listening on {}", addr);
@@ -48,6 +49,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Wait for both to finish
     let _ = tokio::join!(client_handle, server_handle);
+
+    // Print final storage state
+    storage_clone.print_all().await;
 
     println!("Server stopped");
     Ok(())

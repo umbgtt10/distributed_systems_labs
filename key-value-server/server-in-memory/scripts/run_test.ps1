@@ -39,26 +39,22 @@ if ($ServerProcess.HasExited) {
 
 Write-Host "Server started (PID: $($ServerProcess.Id))" -ForegroundColor Green
 
-# Run for 30 seconds
+# Run for test duration + 2 seconds buffer
 Write-Host ""
-Write-Host "Running stress test for 30 seconds..." -ForegroundColor Cyan
-Start-Sleep -Seconds 30
+Write-Host "Running stress test (will auto-shutdown after config duration)..." -ForegroundColor Cyan
+Start-Sleep -Seconds 32
 
 Write-Host ""
-Write-Host "Test duration completed. Shutting down..." -ForegroundColor Yellow
+Write-Host "Test completed. Waiting for graceful shutdown..." -ForegroundColor Yellow
+Start-Sleep -Seconds 2
 
-# Send Ctrl+C to allow graceful shutdown
+# Server should have already shut down gracefully
 if (!$ServerProcess.HasExited) {
-    Write-Host "Stopping server (PID: $($ServerProcess.Id))..." -ForegroundColor Yellow
-
-    # Try to send Ctrl+C signal
-    try {
-        [System.Console]::TreatControlCAsInput = $false
-        $ServerProcess.Kill()
-    } catch {
-        # Fallback to force stop
-        Stop-Process -Id $ServerProcess.Id -Force -ErrorAction SilentlyContinue
-    }
+    Write-Host "Server still running, forcing shutdown (PID: $($ServerProcess.Id))..." -ForegroundColor Yellow
+    Stop-Process -Id $ServerProcess.Id -Force -ErrorAction SilentlyContinue
+    Start-Sleep -Milliseconds 500
+} else {
+    Write-Host "Server shut down gracefully" -ForegroundColor Green
 }
 
 Write-Host ""

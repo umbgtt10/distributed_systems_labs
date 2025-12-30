@@ -8,6 +8,8 @@ tokio = { workspace = true }
 async-trait = { workspace = true }
 tokio-util = { workspace = true }
 fastrand = "2.3"
+serde = { workspace = true }
+serde_json = { workspace = true }
 
 # gRPC dependencies
 tonic = { workspace = true }

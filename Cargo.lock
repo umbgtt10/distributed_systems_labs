@@ -497,6 +497,8 @@ dependencies = [
  "async-trait",
  "fastrand",
  "prost",
+ "serde",
+ "serde_json",
  "socket2",
  "tokio",
  "tokio-stream",

@@ -1,0 +1,35 @@
+{
+  "test_duration_seconds": 30,
+  "clients": [
+    {
+      "name": "client_1",
+      "success_sleep_ms": 1000,
+      "error_sleep_ms": 2000,
+      "keys": ["key1", "key2", "key5", "key6"]
+    },
+    {
+      "name": "client_2",
+      "success_sleep_ms": 800,
+      "error_sleep_ms": 1500,
+      "keys": ["key1", "key3", "key5", "key7"]
+    },
+    {
+      "name": "client_3",
+      "success_sleep_ms": 1200,
+      "error_sleep_ms": 2500,
+      "keys": ["key2", "key4", "key8"]
+    },
+    {
+      "name": "client_4",
+      "success_sleep_ms": 900,
+      "error_sleep_ms": 1800,
+      "keys": ["key1", "key2", "key9"]
+    },
+    {
+      "name": "client_5",
+      "success_sleep_ms": 1100,
+      "error_sleep_ms": 2200,
+      "keys": ["key3", "key4", "key5", "key10"]
+    }
+  ]
+}

@@ -4,6 +4,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     tonic_prost_build::configure()
         .out_dir(".generated")
-        .compile_protos(&["proto/kvservice.proto"], &["proto"])?;
+        .compile_protos(&["proto/key-value-server.proto"], &["proto"])?;
     Ok(())
 }

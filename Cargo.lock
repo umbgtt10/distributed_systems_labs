@@ -508,17 +508,11 @@ dependencies = [
 name = "key-value-server-grpc-client"
 version = "0.1.0"
 dependencies = [
- "clap",
- "prost",
- "serde",
- "serde_json",
- "socket2",
+ "fastrand",
+ "key-value-server-core",
  "tokio",
- "tokio-stream",
+ "tokio-util",
  "tonic",
- "tonic-build",
- "tonic-prost",
- "tonic-prost-build",
 ]
 
 [[package]]

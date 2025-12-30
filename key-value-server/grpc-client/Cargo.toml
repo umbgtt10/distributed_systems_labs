@@ -8,18 +8,8 @@ name = "key-value-server-grpc-client"
 path = "src/main.rs"
 
 [dependencies]
+key-value-server-core = { path = "../core" }
 tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-clap = { workspace = true }
-
-# gRPC dependencies
 tonic = { workspace = true }
-tonic-prost = { workspace = true }
-prost = { workspace = true }
-tokio-stream = { workspace = true }
-socket2 = "0.6.1"
-
-[build-dependencies]
-tonic-build = { workspace = true }
-tonic-prost-build = { workspace = true }
+tokio-util = { workspace = true }
+fastrand = "2.3"

@@ -83,6 +83,16 @@ async fn perform_get(
     key: &str,
     op_num: u64,
 ) {
+    // Simulate client-side packet loss BEFORE sending request
+    if fastrand::f32() < (config.client_packet_loss_rate / 100.0) {
+        println!(
+            "[{}][{}] GET '{}' -> CLIENT PACKET LOSS (request not sent)",
+            config.name, op_num, key
+        );
+        sleep(Duration::from_millis(config.error_sleep_ms)).await;
+        return;
+    }
+
     let request = tonic::Request::new(GetRequest {
         key: key.to_string(),
     });

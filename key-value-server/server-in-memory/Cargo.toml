@@ -1,21 +1,14 @@
 [package]
-name = "key-valuer-server-in-memory"
+name = "key-value-server-in-memory"
 version = "0.1.0"
 edition = "2021"
 
 [[bin]]
-name = "key-valuer-server-in-memory"
+name = "key-value-server-in-memory"
 path = "src/main.rs"
 
 [dependencies]
-map-reduce-core = { workspace = true }
-map-reduce-word-search = { workspace = true }
 tokio = { workspace = true }
-serde = { workspace = true }
-serde_json = { workspace = true }
-clap = { workspace = true }
-async-trait = { workspace = true }
-rand = { workspace = true }
 
 # gRPC dependencies
 tonic = { workspace = true }

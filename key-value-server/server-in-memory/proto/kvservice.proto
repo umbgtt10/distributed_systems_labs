@@ -1,0 +1,57 @@
+syntax = "proto3";
+
+package kvservice;
+
+service KvService {
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Put(PutRequest) returns (PutResponse);
+}
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  oneof result {
+    GetSuccess success = 1;
+    GetError error = 2;
+  }
+}
+
+message GetSuccess {
+  string value = 1;
+  uint64 version = 2;
+}
+
+message GetError {
+  ErrorType error_type = 1;
+  string message = 2;
+}
+
+message PutRequest {
+  string key = 1;
+  string value = 2;
+  uint64 version = 3;  // 0 = create new, N = expected current version
+}
+
+message PutResponse {
+  oneof result {
+    PutSuccess success = 1;
+    PutError error = 2;
+  }
+}
+
+message PutSuccess {
+  uint64 new_version = 1;
+}
+
+message PutError {
+  ErrorType error_type = 1;
+  string message = 2;
+}
+
+enum ErrorType {
+  KEY_NOT_FOUND = 0;
+  KEY_ALREADY_EXISTS = 1;
+  VERSION_MISMATCH = 2;
+}

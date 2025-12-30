@@ -1,6 +1,8 @@
-use std::sync::{Arc, atomic::{AtomicBool, Ordering}};
-
 use map_reduce_core::shutdown_signal::ShutdownSignal;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc,
+};
 
 /// Thread-based shutdown signal using atomic flag
 #[derive(Clone)]

@@ -1,3 +1,4 @@
+use crate::socket_status_sender::SocketStatusSender;
 use map_reduce_core::worker_synchronization::WorkerSynchronization;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -5,8 +6,6 @@ use tokio::io::AsyncReadExt;
 use tokio::net::TcpListener;
 use tokio_stream::wrappers::TcpListenerStream;
 use tokio_stream::{StreamExt, StreamMap};
-
-use crate::socket_status_sender::SocketStatusSender;
 
 /// Completion message type
 #[derive(Debug, Clone, Serialize, Deserialize)]

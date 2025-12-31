@@ -11,7 +11,8 @@ pub struct GrpcClient<T: Timer = TokioTimer, R: Random = FastrandRandom> {
     server_address: String,
     max_retries: u32,
     cancellation_token: CancellationToken,
-    operation_handler: KvOperationHandler<T, R>,
+    timer: T,
+    random: R,
 }
 
 impl<T: Timer, R: Random> GrpcClient<T, R> {
@@ -22,13 +23,13 @@ impl<T: Timer, R: Random> GrpcClient<T, R> {
         timer: T,
         random: R,
     ) -> Self {
-        let operation_handler = KvOperationHandler::new(timer, random);
         Self {
             config,
             server_address,
             max_retries,
             cancellation_token: CancellationToken::new(),
-            operation_handler,
+            timer,
+            random,
         }
     }
 
@@ -59,54 +60,32 @@ impl<T: Timer, R: Random> GrpcClient<T, R> {
 
             operation_count += 1;
 
-            // Randomly select a key from config
-            let key = &self.config.keys[self
-                .operation_handler
-                .random
-                .usize(0..self.config.keys.len())];
-
-            // Randomly choose between get and put
-            let is_get = self.operation_handler.random.bool();
-
-            self.operation_handler
-                .perform_operation(
-                    is_get,
-                    &mut client,
-                    &self.config,
-                    key,
-                    operation_count,
-                    self.max_retries,
-                    &self.cancellation_token,
-                )
-                .await;
+            self.perform_operation(
+                &mut client,
+                &self.config,
+                operation_count,
+                self.max_retries,
+                &self.cancellation_token,
+            )
+            .await;
         }
 
         println!("[{}] Client stopped", self.config.name);
         Ok(())
     }
-}
 
-pub struct KvOperationHandler<T: Timer, R: Random> {
-    pub(crate) timer: T,
-    pub(crate) random: R,
-}
-
-impl<T: Timer, R: Random> KvOperationHandler<T, R> {
-    pub fn new(timer: T, random: R) -> Self {
-        Self { timer, random }
-    }
-
-    #[allow(clippy::too_many_arguments)]
     pub async fn perform_operation(
         &self,
-        is_get: bool,
         client: &mut KvServiceClient<tonic::transport::Channel>,
         config: &ClientConfig,
-        key: &str,
         op_num: u64,
         max_retries: u32,
         cancellation_token: &CancellationToken,
     ) {
+        let key = &config.keys[self.random.usize(0..config.keys.len())];
+
+        let is_get = self.random.bool();
+
         if is_get {
             let op = GetOperation::new(config, key, op_num, &self.timer, &self.random);
             op.execute(client).await;

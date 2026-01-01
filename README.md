@@ -42,10 +42,32 @@ All three share identical business logic, proving the abstraction design works.
 
 → [Explore MapReduce Implementation](map-reduce/README.md)
 
+---
+
+### [Key-Value Server](key-value-server/README.md) 🔑
+
+**Status:** ✅ Complete
+**Original Lab:** [MIT 6.824 Lab 3](https://pdos.csail.mit.edu/6.824/labs/lab-kvraft.html)
+
+A Rust implementation demonstrating **pluggable storage backends** through three working implementations that share identical server/client logic:
+
+- **server-in-memory**: HashMap with Mutex (reference implementation)
+- **server-flat-file**: JSON file-based persistence
+- **server-sled-db**: Production-grade embedded database
+
+All three implement the same `Storage` trait with:
+- **Optimistic concurrency control**: Version-based conflict detection
+- **Fault injection**: Client and server-side packet loss simulation
+- **Recovery detection**: Smart retry logic for failed writes
+- **gRPC protocol**: Type-safe RPC with Tonic
+
+→ [Explore Key-Value Server Implementation](key-value-server/README.md)
+
+---
+
 ### Future Projects
 
-- **Raft Consensus** (Lab 2)
-- **Fault-Tolerant Key/Value Service** (Lab 3)
+- **Raft Consensus** (Lab 3)
 - **Sharded Key/Value Service** (Lab 4)
 
 ## Learning Objectives
@@ -80,16 +102,18 @@ cargo --version
 git clone https://github.com/yourusername/distributed_systems.git
 cd distributed_systems
 
-# Run MapReduce examples
+# Run MapReduce stress tests (all implementations)
 cd map-reduce
-
 # Windows (PowerShell)
 .\scripts\stress_test.ps1
 
+# Run Key-Value Server stress tests (all implementations)
+cd key-value-server\scripts
+.\stress_test.ps1
+
 # Individual implementations
-cd task-channels && cargo run
-cd thread-socket && cargo run
-cd process-rpc && cargo run
+cd map-reduce\task-channels && cargo run
+cd key-value-server\server-in-memory && cargo run
 ```
 
 ## Project Structure
@@ -97,16 +121,28 @@ cd process-rpc && cargo run
 ```
 distributed_systems/
 ├── README.md                    # ← You are here
-└── map-reduce/                  # MapReduce implementation
-    ├── README.md               # MapReduce overview
-    ├── core/                   # Core abstractions
-    │   └── README.md          # Trait design explanation
-    ├── task-channels/         # Implementation 1
-    │   └── README.md         # In-process async
-    ├── thread-socket/        # Implementation 2
-    │   └── README.md        # Multi-threaded TCP
-    └── process-rpc/          # Implementation 3
-        └── README.md        # Multi-process RPC
+├── map-reduce/                  # MapReduce implementation
+│   ├── README.md               # MapReduce overview
+│   ├── core/                   # Core abstractions
+│   │   └── README.md          # Trait design explanation
+│   ├── task-channels/         # Implementation 1
+│   │   └── README.md         # In-process async
+│   ├── thread-socket/        # Implementation 2
+│   │   └── README.md        # Multi-threaded TCP
+│   ├── process-rpc/          # Implementation 3
+│   │   └── README.md        # Multi-process RPC
+│   └── word-search/          # MapReduce application
+│       └── README.md        # Word search implementation
+└── key-value-server/           # Key-Value Server implementation
+    ├── README.md              # KV Server overview
+    ├── core/                  # Core abstractions & protocol
+    │   └── README.md         # Storage trait & gRPC
+    ├── server-in-memory/     # Implementation 1
+    │   └── README.md        # HashMap storage
+    ├── server-flat-file/     # Implementation 2
+    │   └── README.md        # JSON file storage
+    └── server-sled-db/       # Implementation 3
+        └── README.md        # Embedded database
 ```
 
 ## Educational Philosophy

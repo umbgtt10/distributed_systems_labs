@@ -5,7 +5,7 @@
 mod flat_file_storage;
 
 use crate::flat_file_storage::FlatFileStorage;
-use key_value_server_core::{ServerRunner, Config};
+use key_value_server_core::{Config, ServerRunner};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {

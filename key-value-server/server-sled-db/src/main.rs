@@ -9,10 +9,6 @@ use key_value_server_core::{Config, ServerRunner};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    println!(
-        "Current dir: {}",
-        std::env::current_dir().unwrap().display()
-    );
     let storage = SledDbStorage::new("storage.db".to_string());
     let config = Config::load("config.json").expect("Failed to load config.json");
 

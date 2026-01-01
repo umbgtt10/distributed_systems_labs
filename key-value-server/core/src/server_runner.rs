@@ -5,7 +5,7 @@
 use crate::rpc::proto::kv_service_client::KvServiceClient;
 use crate::rpc::proto::kv_service_server::KvServiceServer;
 use crate::{
-    FastrandRandom, GrpcClient, KeyValueServer, PacketLossWrapper, Storage, Config, TokioTimer,
+    Config, FastrandRandom, GrpcClient, KeyValueServer, PacketLossWrapper, Storage, TokioTimer,
 };
 use std::net::SocketAddr;
 use tonic::transport::{Channel, Server};
@@ -30,7 +30,6 @@ impl<S: Storage + Clone + 'static> ServerRunner<S> {
         config: &Config,
         addr: &str,
     ) -> Result<Self, Box<dyn std::error::Error>> {
-
         let addr = addr.parse()?;
 
         Ok(Self {

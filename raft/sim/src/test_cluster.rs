@@ -3,10 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
-    in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
-    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
-    vec_node_collection::VecNodeCollection,
+    in_memory_log_entry_collection::InMemoryLogEntryCollection, in_memory_map_collection::InMemoryMapCollection, in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage, in_memory_transport::InMemoryTransport, message_broker::MessageBroker, vec_node_collection::VecNodeCollection
 };
 use indexmap::IndexMap;
 use raft_core::{
@@ -22,6 +19,7 @@ type InMemoryRaftNode = RaftNode<
     InMemoryStateMachine,
     VecNodeCollection,
     InMemoryLogEntryCollection,
+    InMemoryMapCollection
 >;
 
 pub struct TestCluster {

@@ -7,6 +7,7 @@
 pub mod event;
 pub mod log_entry;
 pub mod log_entry_collection;
+pub mod map_collection;
 pub mod node_collection;
 pub mod node_state;
 pub mod raft_messages;

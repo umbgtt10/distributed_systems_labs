@@ -6,6 +6,7 @@ use crate::{
     event::Event,
     log_entry::LogEntry,
     log_entry_collection::LogEntryCollection,
+    map_collection::MapCollection,
     node_collection::NodeCollection,
     node_state::NodeState,
     raft_messages::RaftMsg,
@@ -16,13 +17,14 @@ use crate::{
     types::{LogIndex, NodeId, Term},
 };
 
-pub struct RaftNode<T, S, P, SM, C, L>
+pub struct RaftNode<T, S, P, SM, C, L, M>
 where
     T: Transport<Payload = P, LogEntries = L>,
     S: Storage<Payload = P>,
     SM: StateMachine<Payload = P>,
     C: NodeCollection,
     L: LogEntryCollection<Payload = P>,
+    M: MapCollection,
 {
     id: NodeId,
     peers: Option<C>,
@@ -34,15 +36,18 @@ where
     transport: Option<T>,
     storage: S,
     state_machine: SM,
+    match_index: M,
+    next_index: M,
 }
 
-impl<T, S, P, SM, C, L> RaftNode<T, S, P, SM, C, L>
+impl<T, S, P, SM, C, L, M> RaftNode<T, S, P, SM, C, L, M>
 where
     T: Transport<Payload = P, LogEntries = L>,
     S: Storage<Payload = P, LogEntryCollection = L>,
     SM: StateMachine<Payload = P>,
     C: NodeCollection,
     L: LogEntryCollection<Payload = P>,
+    M: MapCollection,
 {
     pub fn new(id: NodeId, storage: S, state_machine: SM) -> Self {
         RaftNode {
@@ -56,6 +61,8 @@ where
             transport: None,
             storage,
             state_machine,
+            match_index: M::new(),
+            next_index: M::new(),
         }
     }
 
@@ -73,6 +80,10 @@ where
 
     pub fn id(&self) -> NodeId {
         self.id
+    }
+
+    pub fn commit_index(&self) -> LogIndex {
+        self.commit_index
     }
 
     pub fn peers(&self) -> Option<&C> {
@@ -265,14 +276,9 @@ where
                             return;
                         }
 
-                        // Only leader processes responses
-                        if self.role == NodeState::Leader && term == self.current_term {
-                            if success {
-                                // Update match_index for this follower (not implemented yet)
-                                // For now, just acknowledge success
-                            } else {
-                                // Retry with earlier entries (not implemented yet)
-                            }
+                        if success && self.role == NodeState::Leader && term == self.current_term {
+                            self.match_index.insert(from, match_index);
+                            self.advance_commit_index();
                         }
                     }
                 }
@@ -337,6 +343,21 @@ where
             self.last_applied += 1;
             if let Some(entry) = self.storage.get_entry(self.last_applied) {
                 self.state_machine.apply(&entry.payload);
+            }
+        }
+    }
+
+    fn advance_commit_index(&mut self) {
+        let leader_index = self.storage.last_log_index();
+
+        if let Some(new_commit) = self.match_index.compute_median(leader_index) {
+            if new_commit > self.commit_index {
+                if let Some(entry) = self.storage.get_entry(new_commit) {
+                    if entry.term == self.current_term {
+                        self.commit_index = new_commit;
+                        self.apply_committed_entries();
+                    }
+                }
             }
         }
     }

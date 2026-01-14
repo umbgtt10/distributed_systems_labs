@@ -3,7 +3,16 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
-    event::Event, log_entry_collection::LogEntryCollection, node_collection::NodeCollection, node_state::NodeState, raft_messages::RaftMsg, state_machine::StateMachine, storage::Storage, timer::TimerKind, transport::Transport, types::{LogIndex, NodeId, Term}
+    event::Event,
+    log_entry_collection::LogEntryCollection,
+    node_collection::NodeCollection,
+    node_state::NodeState,
+    raft_messages::RaftMsg,
+    state_machine::StateMachine,
+    storage::Storage,
+    timer::TimerKind,
+    transport::Transport,
+    types::{LogIndex, NodeId, Term},
 };
 
 pub struct RaftNode<T, S, P, SM, C, L>
@@ -49,6 +58,10 @@ where
 
     pub fn role(&self) -> &NodeState {
         &self.role
+    }
+
+    pub fn storage(&self) -> &S {
+        &self.storage
     }
 
     pub fn current_term(&self) -> Term {
@@ -102,16 +115,14 @@ where
             Event::TimerFired(TimerKind::Heartbeat) => {
                 if self.role == NodeState::Leader {
                     // send heartbeats
-                    let last_log_index = self.storage.last_log_index();
-                    let last_log_term = self.storage.last_log_term();
                     for &peer in self.peers.as_ref().unwrap().iter() {
                         self.transport.as_mut().unwrap().send(
                             peer,
                             RaftMsg::AppendEntries {
                                 term: self.current_term,
                                 leader_id: self.id,
-                                prev_log_index: last_log_index,
-                                prev_log_term: last_log_term,
+                                prev_log_index: self.storage.last_log_index(),
+                                prev_log_term: self.storage.last_log_term(),
                                 entries: L::new(), // empty for heartbeat
                                 leader_commit: self.commit_index,
                             },

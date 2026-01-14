@@ -10,6 +10,8 @@ members = [
     "key-value-server/server-in-memory",
     "key-value-server/server-flat-file",
     "key-value-server/server-sled-db",
+    "raft/core",
+    "raft/sim",
 ]
 
 [workspace.dependencies]

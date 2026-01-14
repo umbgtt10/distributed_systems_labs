@@ -5,5 +5,5 @@
 pub trait StateMachine {
     type Payload;
 
-    fn apply(&mut self, command: &Self::Payload);
+    fn apply(&mut self, payload: &Self::Payload);
 }

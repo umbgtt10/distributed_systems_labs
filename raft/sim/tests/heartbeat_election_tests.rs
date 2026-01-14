@@ -35,7 +35,6 @@ fn test_leader_sends_heartbeats() {
         &messages_to_2[0],
         RaftMsg::AppendEntries {
             term: 1,
-            leader_id: 1,
             entries: _, // Should be empty
             ..
         }
@@ -47,7 +46,6 @@ fn test_leader_sends_heartbeats() {
         &messages_to_3[0],
         RaftMsg::AppendEntries {
             term: 1,
-            leader_id: 1,
             entries: _, // Should be empty
             ..
         }

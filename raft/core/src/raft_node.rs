@@ -4,6 +4,7 @@
 
 use crate::{
     event::Event,
+    log_entry::LogEntry,
     log_entry_collection::LogEntryCollection,
     node_collection::NodeCollection,
     node_state::NodeState,
@@ -28,6 +29,7 @@ where
     role: NodeState,
     current_term: Term,
     commit_index: LogIndex,
+    last_applied: LogIndex,
     votes_received: C,
     transport: Option<T>,
     storage: S,
@@ -37,7 +39,7 @@ where
 impl<T, S, P, SM, C, L> RaftNode<T, S, P, SM, C, L>
 where
     T: Transport<Payload = P, LogEntries = L>,
-    S: Storage<Payload = P>,
+    S: Storage<Payload = P, LogEntryCollection = L>,
     SM: StateMachine<Payload = P>,
     C: NodeCollection,
     L: LogEntryCollection<Payload = P>,
@@ -49,6 +51,7 @@ where
             role: NodeState::Follower,
             current_term: storage.current_term(),
             commit_index: 0,
+            last_applied: 0,
             votes_received: C::new(),
             transport: None,
             storage,
@@ -97,16 +100,14 @@ where
                     // reset election timer
                     // self.reset_timer(TimerKind::Election);
                     // send request vote to all peers
-                    let last_log_index = self.storage.last_log_index();
-                    let last_log_term = self.storage.last_log_term();
                     for &peer in self.peers.as_ref().unwrap().iter() {
                         self.transport.as_mut().unwrap().send(
                             peer,
                             RaftMsg::RequestVote {
                                 term: self.current_term,
                                 candidate_id: self.id,
-                                last_log_index,
-                                last_log_term,
+                                last_log_index: self.storage.last_log_index(),
+                                last_log_term: self.storage.last_log_term(),
                             },
                         );
                     }
@@ -120,10 +121,9 @@ where
                             peer,
                             RaftMsg::AppendEntries {
                                 term: self.current_term,
-                                leader_id: self.id,
                                 prev_log_index: self.storage.last_log_index(),
                                 prev_log_term: self.storage.last_log_term(),
-                                entries: L::new(), // empty for heartbeat
+                                entries: L::new(&[]), // empty for heartbeat
                                 leader_commit: self.commit_index,
                             },
                         );
@@ -202,46 +202,146 @@ where
                     }
                     RaftMsg::AppendEntries {
                         term,
-                        leader_id,
                         prev_log_index,
                         prev_log_term,
                         entries,
                         leader_commit,
                     } => {
-                        if term >= self.current_term {
+                        // Update term if necessary
+                        if term > self.current_term {
                             self.current_term = term;
                             self.storage.set_current_term(term);
                             self.role = NodeState::Follower;
                             self.storage.set_voted_for(None);
-                            // reset election timer
-                            // handle log replication, but for election, just acknowledge
-                            let success = true; // assume for now
-                            self.transport.as_mut().unwrap().send(
+                        }
+
+                        let success = if term < self.current_term {
+                            false
+                        } else {
+                            // Check log consistency
+                            let log_ok = self.check_log_consistency(prev_log_index, prev_log_term);
+
+                            if log_ok {
+                                // Append new entries
+                                self.storage.append_entries(entries.as_slice());
+
+                                // Update commit index
+                                if leader_commit > self.commit_index {
+                                    self.commit_index =
+                                        leader_commit.min(self.storage.last_log_index());
+                                    self.apply_committed_entries();
+                                }
+
+                                true
+                            } else {
+                                false
+                            }
+                        };
+
+                        // Send response
+                        if let Some(transport) = self.transport.as_mut() {
+                            transport.send(
                                 from,
                                 RaftMsg::AppendEntriesResponse {
                                     term: self.current_term,
                                     success,
-                                    match_index: prev_log_index + entries.len() as LogIndex,
-                                },
-                            );
-                        } else {
-                            self.transport.as_mut().unwrap().send(
-                                from,
-                                RaftMsg::AppendEntriesResponse {
-                                    term: self.current_term,
-                                    success: false,
-                                    match_index: 0,
+                                    match_index: self.storage.last_log_index(),
                                 },
                             );
                         }
                     }
-                    RaftMsg::AppendEntriesResponse { .. } => {
-                        // for leader, handle replication, but for election, perhaps later
+                    RaftMsg::AppendEntriesResponse {
+                        term,
+                        success,
+                        match_index,
+                    } => {
+                        // Step down if higher term
+                        if term > self.current_term {
+                            self.current_term = term;
+                            self.storage.set_current_term(term);
+                            self.role = NodeState::Follower;
+                            self.storage.set_voted_for(None);
+                            return;
+                        }
+
+                        // Only leader processes responses
+                        if self.role == NodeState::Leader && term == self.current_term {
+                            if success {
+                                // Update match_index for this follower (not implemented yet)
+                                // For now, just acknowledge success
+                            } else {
+                                // Retry with earlier entries (not implemented yet)
+                            }
+                        }
                     }
                 }
             }
-            Event::ClientCommand(_) => {
-                // handle client commands later
+            Event::ClientCommand(payload) => {
+                if self.role == NodeState::Leader {
+                    // Append to leader's log
+                    let entry = LogEntry {
+                        term: self.current_term,
+                        payload,
+                    };
+                    self.storage.append_entries(&[entry]);
+
+                    self.send_append_entries_to_followers();
+                }
+            }
+        }
+    }
+
+    fn send_append_entries_to_followers(&mut self) {
+        for peer in self.peers.as_ref().unwrap().iter() {
+            if let Some(transport) = self.transport.as_mut() {
+                // For initial entries, prev should be 0
+                let last_index = self.storage.last_log_index();
+                let prev_log_index = if last_index > 0 { last_index - 1 } else { 0 };
+                let prev_log_term = if prev_log_index > 0 {
+                    self.storage
+                        .get_entry(prev_log_index)
+                        .map(|e| e.term)
+                        .unwrap_or(0)
+                } else {
+                    0
+                };
+
+                let last = self.storage.last_log_index();
+                let mut entries = L::new(&[]);
+                if last > 0 {
+                    entries = self.storage.get_entries(1, last + 1) // +1 because end is exclusive
+                }
+
+                transport.send(
+                    *peer,
+                    RaftMsg::AppendEntries {
+                        term: self.current_term,
+                        prev_log_index,
+                        prev_log_term,
+                        entries,
+                        leader_commit: self.commit_index,
+                    },
+                );
+            }
+        }
+    }
+
+    fn check_log_consistency(&self, prev_log_index: LogIndex, prev_log_term: Term) -> bool {
+        if prev_log_index == 0 {
+            true // Empty log is always consistent
+        } else {
+            self.storage
+                .get_entry(prev_log_index)
+                .map(|entry| entry.term)
+                == Some(prev_log_term)
+        }
+    }
+
+    fn apply_committed_entries(&mut self) {
+        while self.last_applied < self.commit_index {
+            self.last_applied += 1;
+            if let Some(entry) = self.storage.get_entry(self.last_applied) {
+                self.state_machine.apply(&entry.payload);
             }
         }
     }

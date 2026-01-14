@@ -2,8 +2,10 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::in_memory_log_entry_collection::InMemoryLogEntryCollection;
 use raft_core::{
     log_entry::LogEntry,
+    log_entry_collection::LogEntryCollection,
     storage::Storage,
     types::{LogIndex, NodeId, Term},
 };
@@ -11,7 +13,7 @@ use raft_core::{
 pub struct InMemoryStorage {
     current_term: Term,
     voted_for: Option<NodeId>,
-    log: Vec<LogEntry<String>>,
+    log: InMemoryLogEntryCollection,
 }
 
 impl InMemoryStorage {
@@ -19,7 +21,7 @@ impl InMemoryStorage {
         Self {
             current_term: 0,
             voted_for: None,
-            log: Vec::new(),
+            log: InMemoryLogEntryCollection::new(&[]),
         }
     }
 }
@@ -32,6 +34,7 @@ impl Default for InMemoryStorage {
 
 impl Storage for InMemoryStorage {
     type Payload = String;
+    type LogEntryCollection = InMemoryLogEntryCollection;
 
     fn current_term(&self) -> Term {
         self.current_term
@@ -58,7 +61,7 @@ impl Storage for InMemoryStorage {
     }
 
     fn last_log_term(&self) -> Term {
-        if let Some(last_entry) = self.log.last() {
+        if let Some(last_entry) = self.log.as_slice().last() {
             last_entry.term
         } else {
             0
@@ -66,14 +69,43 @@ impl Storage for InMemoryStorage {
     }
 
     fn get_entry(&self, index: LogIndex) -> Option<LogEntry<String>> {
-        self.log.get(index as usize).cloned()
+        // Convert 1-based index to 0-based
+        if index == 0 {
+            None
+        } else {
+            self.log.as_slice().get((index - 1) as usize).cloned()
+        }
+    }
+
+    fn get_entries(&self, start: LogIndex, end: LogIndex) -> InMemoryLogEntryCollection {
+        // Convert 1-based indices to 0-based
+        // Raft: get_entries(1, 2) means "get entry at index 1"
+        // Vec: need log[0..1]
+        if start == 0 || start > end {
+            return InMemoryLogEntryCollection::new(&[]);
+        }
+
+        let start_idx = (start - 1) as usize;
+        let end_idx = (end - 1) as usize;
+
+        let entries = self
+            .log
+            .as_slice()
+            .get(start_idx..end_idx)
+            .unwrap_or(&[])
+            .to_vec();
+        InMemoryLogEntryCollection::new(&entries)
     }
 
     fn append_entries(&mut self, entries: &[LogEntry<String>]) {
-        self.log.extend_from_slice(entries);
+        for entry in entries {
+            self.log.push(entry.clone()).unwrap();
+        }
     }
 
+    /*
     fn truncate_suffix(&mut self, from: LogIndex) {
-        self.log.truncate(from as usize);
+        self.log.entries.truncate(from as usize);
     }
+     */
 }

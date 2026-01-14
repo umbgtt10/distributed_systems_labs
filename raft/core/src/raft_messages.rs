@@ -21,7 +21,6 @@ pub enum RaftMsg<P, L: LogEntryCollection<Payload = P>> {
     },
     AppendEntries {
         term: Term,
-        leader_id: NodeId,
         prev_log_index: LogIndex,
         prev_log_term: Term,
         entries: L,

@@ -12,7 +12,7 @@ pub trait LogEntryCollection {
         Self: 'a,
         Self::Payload: 'a;
 
-    fn new() -> Self;
+    fn new(entries: &[LogEntry<Self::Payload>]) -> Self;
     fn clear(&mut self);
     fn push(&mut self, entry: LogEntry<Self::Payload>) -> Result<(), CollectionError>;
     fn len(&self) -> usize;

@@ -4,11 +4,13 @@
 
 use crate::{
     log_entry::LogEntry,
+    log_entry_collection::LogEntryCollection,
     types::{LogIndex, NodeId, Term},
 };
 
 pub trait Storage {
-    type Payload;
+    type Payload: Clone;
+    type LogEntryCollection: LogEntryCollection<Payload = Self::Payload>;
 
     fn current_term(&self) -> Term;
     fn set_current_term(&mut self, term: Term);
@@ -20,7 +22,10 @@ pub trait Storage {
     fn last_log_term(&self) -> Term;
 
     fn get_entry(&self, index: LogIndex) -> Option<LogEntry<Self::Payload>>;
+    fn get_entries(&self, start: LogIndex, end: LogIndex) -> Self::LogEntryCollection;
     fn append_entries(&mut self, entries: &[LogEntry<Self::Payload>]);
 
+    /*
     fn truncate_suffix(&mut self, from: LogIndex);
+    */
 }

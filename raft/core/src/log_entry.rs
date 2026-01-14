@@ -7,5 +7,5 @@ use crate::types::Term;
 #[derive(Clone, Debug, PartialEq)]
 pub struct LogEntry<P> {
     pub term: Term,
-    pub command: P,
+    pub payload: P,
 }

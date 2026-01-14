@@ -109,19 +109,7 @@ impl TestCluster {
     }
 
     pub fn deliver_messages(&mut self) {
-        self.deliver_messages_with_limit(100)
-    }
-
-    pub fn deliver_messages_with_limit(&mut self, max_rounds: usize) {
-        let mut rounds = 0;
         loop {
-            if rounds >= max_rounds {
-                panic!(
-                    "Message delivery exceeded {} rounds - possible infinite loop",
-                    max_rounds
-                );
-            }
-
             // Collect all messages first, then deliver them
             let mut messages_to_deliver = Vec::new();
             {
@@ -134,7 +122,6 @@ impl TestCluster {
             }
 
             if messages_to_deliver.is_empty() {
-                println!("No more messages to deliver after {} rounds", rounds);
                 break;
             }
 
@@ -145,8 +132,6 @@ impl TestCluster {
                 let node = self.nodes.get_mut(&node_id).unwrap();
                 node.on_event(Event::Message { from, msg });
             }
-
-            rounds += 1;
         }
     }
 

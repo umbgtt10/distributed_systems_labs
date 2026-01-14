@@ -22,10 +22,6 @@ pub trait Storage {
     fn last_log_term(&self) -> Term;
 
     fn get_entry(&self, index: LogIndex) -> Option<LogEntry<Self::Payload>>;
-    fn get_entries(&self, start: LogIndex, end: LogIndex) -> Self::LogEntryCollection;
+    fn get_entries(&self) -> Self::LogEntryCollection;
     fn append_entries(&mut self, entries: &[LogEntry<Self::Payload>]);
-
-    /*
-    fn truncate_suffix(&mut self, from: LogIndex);
-    */
 }

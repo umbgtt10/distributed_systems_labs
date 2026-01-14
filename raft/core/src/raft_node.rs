@@ -145,10 +145,11 @@ where
                             self.role = NodeState::Follower;
                             self.storage.set_voted_for(None);
                         }
-                        let vote_granted = if term < self.current_term {
-                            false
-                        } else if self.storage.voted_for().is_some()
-                            && self.storage.voted_for() != Some(candidate_id)
+                        let vote_granted = if term < self.current_term
+                            || self
+                                .storage
+                                .voted_for()
+                                .is_some_and(|voted| voted != candidate_id)
                         {
                             false
                         } else {
@@ -306,19 +307,13 @@ where
                     0
                 };
 
-                let last = self.storage.last_log_index();
-                let mut entries = L::new(&[]);
-                if last > 0 {
-                    entries = self.storage.get_entries(1, last + 1) // +1 because end is exclusive
-                }
-
                 transport.send(
                     *peer,
                     RaftMsg::AppendEntries {
                         term: self.current_term,
                         prev_log_index,
                         prev_log_term,
-                        entries,
+                        entries: self.storage.get_entries(),
                         leader_commit: self.commit_index,
                     },
                 );

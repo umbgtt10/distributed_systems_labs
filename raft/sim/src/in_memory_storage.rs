@@ -102,10 +102,4 @@ impl Storage for InMemoryStorage {
             self.log.push(entry.clone()).unwrap();
         }
     }
-
-    /*
-    fn truncate_suffix(&mut self, from: LogIndex) {
-        self.log.entries.truncate(from as usize);
-    }
-     */
 }

@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
-    log_entry_collection::LogEntryCollection, raft_messages::RaftMsg, timer::TimerKind,
+    log_entry_collection::LogEntryCollection, raft_messages::RaftMsg, timer_service::TimerKind,
     types::NodeId,
 };
 

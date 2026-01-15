@@ -1,13 +1,13 @@
 use raft_core::{
     event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
-    timer::TimerKind,
+    timer_service::TimerKind,
 };
-use raft_sim::{in_memory_storage::InMemoryStorage, test_cluster::TestCluster};
+use raft_sim::{in_memory_storage::InMemoryStorage, timeless_test_cluster::TimelessTestCluster};
 
 #[test]
 fn test_follower_far_behind() {
     // Arrange - Leader has entries 1-5, follower has only 1-2
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);

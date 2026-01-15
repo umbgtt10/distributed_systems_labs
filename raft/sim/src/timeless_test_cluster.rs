@@ -6,7 +6,8 @@ use crate::{
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection, in_memory_state_machine::InMemoryStateMachine,
     in_memory_storage::InMemoryStorage, in_memory_transport::InMemoryTransport,
-    message_broker::MessageBroker, vec_node_collection::VecNodeCollection,
+    message_broker::MessageBroker, no_action_timer::DummyTimer,
+    vec_node_collection::VecNodeCollection,
 };
 use indexmap::IndexMap;
 use raft_core::{
@@ -15,7 +16,7 @@ use raft_core::{
 };
 use std::sync::{Arc, Mutex};
 
-type InMemoryRaftNode = RaftNode<
+type InMemoryTimelessRaftNode = RaftNode<
     InMemoryTransport,
     InMemoryStorage,
     String,
@@ -23,16 +24,17 @@ type InMemoryRaftNode = RaftNode<
     VecNodeCollection,
     InMemoryLogEntryCollection,
     InMemoryMapCollection,
+    DummyTimer,
 >;
 
-pub struct TestCluster {
-    nodes: IndexMap<NodeId, InMemoryRaftNode>,
+pub struct TimelessTestCluster {
+    nodes: IndexMap<NodeId, InMemoryTimelessRaftNode>,
     broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
     message_log: Vec<(NodeId, NodeId, RaftMsg<String, InMemoryLogEntryCollection>)>,
     partitions: Option<(Vec<NodeId>, Vec<NodeId>)>,
 }
 
-impl TestCluster {
+impl TimelessTestCluster {
     pub fn new() -> Self {
         Self {
             nodes: IndexMap::new(),
@@ -42,11 +44,11 @@ impl TestCluster {
         }
     }
 
-    pub fn get_node(&self, id: NodeId) -> &InMemoryRaftNode {
+    pub fn get_node(&self, id: NodeId) -> &InMemoryTimelessRaftNode {
         &self.nodes[&id]
     }
 
-    pub fn get_node_mut(&mut self, id: NodeId) -> &mut InMemoryRaftNode {
+    pub fn get_node_mut(&mut self, id: NodeId) -> &mut InMemoryTimelessRaftNode {
         self.nodes.get_mut(&id).unwrap()
     }
 
@@ -93,14 +95,19 @@ impl TestCluster {
 
     pub fn add_node(&mut self, id: NodeId) {
         let transport = InMemoryTransport::new(id, self.broker.clone());
-        let mut node = RaftNode::new(id, InMemoryStorage::new(), InMemoryStateMachine::new());
+        let mut node = RaftNode::new(
+            id,
+            InMemoryStorage::new(),
+            InMemoryStateMachine::new(),
+            DummyTimer,
+        );
         node.set_transport(transport);
         self.nodes.insert(id, node);
     }
 
     pub fn add_node_with_storage(&mut self, id: NodeId, storage: InMemoryStorage) {
         let transport = InMemoryTransport::new(id, self.broker.clone());
-        let mut node = RaftNode::new(id, storage, InMemoryStateMachine::new());
+        let mut node = RaftNode::new(id, storage, InMemoryStateMachine::new(), DummyTimer);
         node.set_transport(transport);
         self.nodes.insert(id, node);
     }
@@ -216,7 +223,7 @@ impl TestCluster {
     }
 }
 
-impl Default for TestCluster {
+impl Default for TimelessTestCluster {
     fn default() -> Self {
         Self::new()
     }

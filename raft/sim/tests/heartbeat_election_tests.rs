@@ -2,13 +2,13 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use raft_core::{event::Event, node_state::NodeState, raft_messages::RaftMsg, timer::TimerKind};
-use raft_sim::test_cluster::TestCluster;
+use raft_core::{event::Event, node_state::NodeState, raft_messages::RaftMsg, timer_service::TimerKind};
+use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
 fn test_leader_sends_heartbeats() {
     // Arrange
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);
@@ -59,7 +59,7 @@ fn test_leader_sends_heartbeats() {
 #[test]
 fn test_heartbeat_prevents_election() {
     // Arrange - Leader established
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);

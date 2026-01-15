@@ -12,12 +12,12 @@ use crate::{
     raft_messages::RaftMsg,
     state_machine::StateMachine,
     storage::Storage,
-    timer::TimerKind,
+    timer_service::{TimerKind, TimerService},
     transport::Transport,
     types::{LogIndex, NodeId, Term},
 };
 
-pub struct RaftNode<T, S, P, SM, C, L, M>
+pub struct RaftNode<T, S, P, SM, C, L, M, TS>
 where
     T: Transport<Payload = P, LogEntries = L>,
     S: Storage<Payload = P>,
@@ -25,6 +25,7 @@ where
     C: NodeCollection,
     L: LogEntryCollection<Payload = P>,
     M: MapCollection,
+    TS: TimerService,
 {
     id: NodeId,
     peers: Option<C>,
@@ -38,9 +39,10 @@ where
     state_machine: SM,
     match_index: M,
     next_index: M,
+    timer_service: TS,
 }
 
-impl<T, S, P, SM, C, L, M> RaftNode<T, S, P, SM, C, L, M>
+impl<T, S, P, SM, C, L, M, TS> RaftNode<T, S, P, SM, C, L, M, TS>
 where
     T: Transport<Payload = P, LogEntries = L>,
     S: Storage<Payload = P, LogEntryCollection = L>,
@@ -48,8 +50,9 @@ where
     C: NodeCollection,
     L: LogEntryCollection<Payload = P>,
     M: MapCollection,
+    TS: TimerService,
 {
-    pub fn new(id: NodeId, storage: S, state_machine: SM) -> Self {
+    pub fn new(id: NodeId, storage: S, state_machine: SM, timer_service: TS) -> Self {
         RaftNode {
             id,
             peers: None,
@@ -63,6 +66,7 @@ where
             state_machine,
             match_index: M::new(),
             next_index: M::new(),
+            timer_service,
         }
     }
 
@@ -94,6 +98,10 @@ where
         &self.state_machine
     }
 
+    pub fn timer_service(&self) -> &TS {
+        &self.timer_service
+    }
+
     pub fn set_peers(&mut self, peers: C) {
         self.peers = Some(peers);
     }
@@ -112,9 +120,9 @@ where
                     self.votes_received.clear();
                     self.votes_received.push(self.id).unwrap(); // vote for self
                     self.role = NodeState::Candidate;
-                    // reset election timer
-                    // self.reset_timer(TimerKind::Election);
-                    // send request vote to all peers
+
+                    self.timer_service.reset_election_timer();
+
                     for &peer in self.peers.as_ref().unwrap().iter() {
                         self.transport.as_mut().unwrap().send(
                             peer,
@@ -138,13 +146,14 @@ where
                     }
 
                     self.send_append_entries_to_followers();
+                    self.timer_service.reset_heartbeat_timer();
                 }
             }
             Event::TimerFired(TimerKind::Heartbeat) => {
                 if self.role == NodeState::Leader {
-                    // Send AppendEntries to all followers
                     // This serves as both heartbeat AND log replication
                     self.send_append_entries_to_followers();
+                    self.timer_service.reset_heartbeat_timer();
                 }
             }
             Event::Message { from, msg } => {
@@ -192,7 +201,8 @@ where
                                 vote_granted,
                             },
                         );
-                        // reset election timer
+
+                        self.timer_service.reset_election_timer();
                     }
                     RaftMsg::RequestVoteResponse { term, vote_granted } => {
                         if term > self.current_term {
@@ -223,6 +233,9 @@ where
                                         self.match_index.insert(*peer, 0);
                                     }
                                 }
+
+                                self.timer_service.stop_timers();
+                                self.timer_service.reset_heartbeat_timer();
                             }
                         }
                     }
@@ -239,6 +252,7 @@ where
                             self.storage.set_current_term(term);
                             self.role = NodeState::Follower;
                             self.storage.set_voted_for(None);
+                            self.timer_service.reset_election_timer();
                         }
 
                         let success = if term < self.current_term {

@@ -2,13 +2,13 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use raft_core::{event::Event, node_state::NodeState, storage::Storage, timer::TimerKind};
-use raft_sim::{in_memory_storage::InMemoryStorage, test_cluster::TestCluster};
+use raft_core::{event::Event, node_state::NodeState, storage::Storage, timer_service::TimerKind};
+use raft_sim::{in_memory_storage::InMemoryStorage, timeless_test_cluster::TimelessTestCluster};
 
 #[test]
 fn test_election_log_restriction() {
     // Arrange - Create cluster with different log lengths
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);

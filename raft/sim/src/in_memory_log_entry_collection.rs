@@ -4,7 +4,7 @@
 
 use raft_core::{
     log_entry::LogEntry,
-    log_entry_collection::{CollectionError, LogEntryCollection},
+    log_entry_collection::{LogEntryCollection, CollectionError},
 };
 
 #[derive(Debug, Clone, PartialEq)]

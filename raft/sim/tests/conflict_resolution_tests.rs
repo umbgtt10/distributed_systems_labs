@@ -4,14 +4,14 @@
 
 use raft_core::{
     event::Event, log_entry::LogEntry, node_state::NodeState, state_machine::StateMachine,
-    storage::Storage, timer::TimerKind,
+    storage::Storage, timer_service::TimerKind,
 };
-use raft_sim::{in_memory_storage::InMemoryStorage, test_cluster::TestCluster};
+use raft_sim::{in_memory_storage::InMemoryStorage, timeless_test_cluster::TimelessTestCluster};
 
 #[test]
 fn test_log_conflict_resolution() {
     // Arrange - Create cluster with divergent logs
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(3);
     cluster.connect_peers();

@@ -1,12 +1,12 @@
 use raft_core::{
     event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
-    timer::TimerKind,
+    timer_service::TimerKind,
 };
-use raft_sim::test_cluster::TestCluster;
+use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
 fn test_rapid_sequential_commands() {
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);

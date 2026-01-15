@@ -4,14 +4,16 @@
 
 use raft_core::{
     event::Event, node_collection::NodeCollection, node_state::NodeState, raft_messages::RaftMsg,
-    timer::TimerKind,
+    timer_service::TimerKind,
 };
-use raft_sim::{test_cluster::TestCluster, vec_node_collection::VecNodeCollection};
+use raft_sim::{
+    timeless_test_cluster::TimelessTestCluster, vec_node_collection::VecNodeCollection,
+};
 
 #[test]
 fn test_empty_cluster() {
     // Arrange
-    let cluster = TestCluster::new();
+    let cluster = TimelessTestCluster::new();
 
     // Assert
     assert_eq!(cluster.get_node_ids().len(), 0);
@@ -20,7 +22,7 @@ fn test_empty_cluster() {
 #[test]
 fn test_add_node() {
     // Arrange
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
 
     // Act
     cluster.add_node(1);
@@ -34,7 +36,7 @@ fn test_add_node() {
 #[test]
 fn test_connection() {
     // Arrange
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);
@@ -70,7 +72,7 @@ fn test_connection() {
 #[test]
 fn test_heartbeat_followers_nothing_delivered() {
     // Arrange
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);
@@ -92,7 +94,7 @@ fn test_heartbeat_followers_nothing_delivered() {
 #[test]
 fn test_election_triggered_followers_respond() {
     // Arrange
-    let mut cluster = TestCluster::new();
+    let mut cluster = TimelessTestCluster::new();
     cluster.add_node(1);
     cluster.add_node(2);
     cluster.add_node(3);

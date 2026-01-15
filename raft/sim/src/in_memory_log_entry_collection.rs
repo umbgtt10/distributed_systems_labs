@@ -44,4 +44,8 @@ impl LogEntryCollection for InMemoryLogEntryCollection {
     fn iter(&self) -> Self::Iter<'_> {
         self.entries.iter()
     }
+
+    fn truncate(&mut self, index: usize) {
+        self.entries.truncate(index);
+    }
 }

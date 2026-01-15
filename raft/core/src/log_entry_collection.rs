@@ -1,4 +1,4 @@
-use crate::log_entry::LogEntry;
+use crate::{log_entry::LogEntry};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CollectionError {
@@ -19,4 +19,5 @@ pub trait LogEntryCollection {
     fn is_empty(&self) -> bool;
     fn as_slice(&self) -> &[LogEntry<Self::Payload>];
     fn iter(&self) -> Self::Iter<'_>;
+    fn truncate(&mut self, index: usize);
 }

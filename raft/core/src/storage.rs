@@ -24,4 +24,6 @@ pub trait Storage {
     fn get_entry(&self, index: LogIndex) -> Option<LogEntry<Self::Payload>>;
     fn get_entries(&self, start: LogIndex, end: LogIndex) -> Self::LogEntryCollection;
     fn append_entries(&mut self, entries: &[LogEntry<Self::Payload>]);
+
+    fn truncate_after(&mut self, index: LogIndex);
 }

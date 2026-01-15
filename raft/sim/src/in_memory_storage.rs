@@ -102,4 +102,10 @@ impl Storage for InMemoryStorage {
             self.log.push(entry.clone()).unwrap();
         }
     }
+
+    fn truncate_after(&mut self, index: LogIndex) {
+        // Convert 1-based index to 0-based Vec index
+        let truncate_at = index as usize;
+        self.log.truncate(truncate_at);
+    }
 }

@@ -74,6 +74,10 @@ where
         &self.storage
     }
 
+    pub fn storage_mut(&mut self) -> &mut S {
+        &mut self.storage
+    }
+
     pub fn current_term(&self) -> Term {
         self.current_term
     }
@@ -250,24 +254,17 @@ where
                             let log_ok = self.check_log_consistency(prev_log_index, prev_log_term);
 
                             if log_ok {
-                                // Only append if we have new entries
-                                if !entries.is_empty() {
-                                    let current_last_index = self.storage.last_log_index();
+                                let last_index = self.storage.last_log_index();
 
-                                    // Only append entries we don't already have
-                                    if prev_log_index < current_last_index {
-                                        // We have conflicting entries - truncate first
-                                        // For now, just skip if we already have all entries
-                                        if prev_log_index + entries.len() as u64
-                                            > current_last_index
-                                        {
-                                            // We need some of these entries
-                                            self.storage.append_entries(entries.as_slice());
-                                        }
-                                    } else {
-                                        // These are all new entries
-                                        self.storage.append_entries(entries.as_slice());
+                                if !entries.is_empty() {
+                                    // If we have entries beyond prev_log_index, they might conflict
+                                    if last_index > prev_log_index {
+                                        // Truncate conflicting entries
+                                        self.storage.truncate_after(prev_log_index);
                                     }
+
+                                    // Append new entries
+                                    self.storage.append_entries(entries.as_slice());
                                 }
 
                                 // Update commit index

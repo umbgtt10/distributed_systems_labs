@@ -6,4 +6,5 @@ pub trait StateMachine {
     type Payload;
 
     fn apply(&mut self, payload: &Self::Payload);
+    fn get(&self, key: &str) -> Option<&str>;
 }

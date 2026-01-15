@@ -90,6 +90,10 @@ where
         self.peers.as_ref()
     }
 
+    pub fn state_machine(&self) -> &SM {
+        &self.state_machine
+    }
+
     pub fn set_peers(&mut self, peers: C) {
         self.peers = Some(peers);
     }
@@ -122,6 +126,18 @@ where
                             },
                         );
                     }
+                }
+                if self.role == NodeState::Leader {
+                    // Initialize next_index for all followers to last_log_index + 1
+                    let next_log_index = self.storage.last_log_index() + 1;
+                    if let Some(peers) = &self.peers {
+                        for peer in peers.iter() {
+                            self.next_index.insert(*peer, next_log_index);
+                            self.match_index.insert(*peer, 0);
+                        }
+                    }
+
+                    self.send_append_entries_to_followers();
                 }
             }
             Event::TimerFired(TimerKind::Heartbeat) => {
@@ -234,8 +250,25 @@ where
                             let log_ok = self.check_log_consistency(prev_log_index, prev_log_term);
 
                             if log_ok {
-                                // Append new entries
-                                self.storage.append_entries(entries.as_slice());
+                                // Only append if we have new entries
+                                if !entries.is_empty() {
+                                    let current_last_index = self.storage.last_log_index();
+
+                                    // Only append entries we don't already have
+                                    if prev_log_index < current_last_index {
+                                        // We have conflicting entries - truncate first
+                                        // For now, just skip if we already have all entries
+                                        if prev_log_index + entries.len() as u64
+                                            > current_last_index
+                                        {
+                                            // We need some of these entries
+                                            self.storage.append_entries(entries.as_slice());
+                                        }
+                                    } else {
+                                        // These are all new entries
+                                        self.storage.append_entries(entries.as_slice());
+                                    }
+                                }
 
                                 // Update commit index
                                 if leader_commit > self.commit_index {
@@ -276,9 +309,19 @@ where
                             return;
                         }
 
-                        if success && self.role == NodeState::Leader && term == self.current_term {
-                            self.match_index.insert(from, match_index);
-                            self.advance_commit_index();
+                        if self.role == NodeState::Leader && term == self.current_term {
+                            if success {
+                                // Update match_index and next_index
+                                self.match_index.insert(from, match_index);
+                                self.next_index.insert(from, match_index + 1);
+                                self.advance_commit_index();
+                            } else {
+                                // Decrement next_index on failure
+                                let next = self.next_index.get(from).unwrap_or(1);
+                                if next > 1 {
+                                    self.next_index.insert(from, next - 1);
+                                }
+                            }
                         }
                     }
                 }
@@ -301,17 +344,22 @@ where
     fn send_append_entries_to_followers(&mut self) {
         for peer in self.peers.as_ref().unwrap().iter() {
             if let Some(transport) = self.transport.as_mut() {
-                // For initial entries, prev should be 0
-                let last_index = self.storage.last_log_index();
-                let prev_log_index = if last_index > 0 { last_index - 1 } else { 0 };
-                let prev_log_term = if prev_log_index > 0 {
+                // Get next_index for this follower (default to 1 if not tracked)
+                let next_idx = self.next_index.get(*peer).unwrap_or(1);
+                let prev_log_index = next_idx.saturating_sub(1);
+                let prev_log_term = if prev_log_index == 0 {
+                    0
+                } else {
                     self.storage
                         .get_entry(prev_log_index)
                         .map(|e| e.term)
                         .unwrap_or(0)
-                } else {
-                    0
                 };
+
+                // Get entries from next_idx to end
+                let entries = self
+                    .storage
+                    .get_entries(next_idx, self.storage.last_log_index() + 1);
 
                 transport.send(
                     *peer,
@@ -319,7 +367,7 @@ where
                         term: self.current_term,
                         prev_log_index,
                         prev_log_term,
-                        entries: self.storage.get_entries(),
+                        entries,
                         leader_commit: self.commit_index,
                     },
                 );

@@ -77,11 +77,21 @@ impl Storage for InMemoryStorage {
         }
     }
 
-    fn get_entries(&self) -> InMemoryLogEntryCollection {
+    fn get_entries(&self, start: LogIndex, end: LogIndex) -> InMemoryLogEntryCollection {
+        // Convert 1-based indices to 0-based
+        // Raft: get_entries(1, 2) means "get entry at index 1"
+        // Vec: need log[0..1]
+        if start == 0 || start > end {
+            return InMemoryLogEntryCollection::new(&[]);
+        }
+
+        let start_idx = (start - 1) as usize;
+        let end_idx = (end - 1) as usize;
+
         let entries = self
             .log
             .as_slice()
-            .get(0..self.log.len())
+            .get(start_idx..end_idx)
             .unwrap_or(&[])
             .to_vec();
         InMemoryLogEntryCollection::new(&entries)
@@ -92,4 +102,10 @@ impl Storage for InMemoryStorage {
             self.log.push(entry.clone()).unwrap();
         }
     }
+
+    /*
+    fn truncate_suffix(&mut self, from: LogIndex) {
+        self.log.entries.truncate(from as usize);
+    }
+     */
 }

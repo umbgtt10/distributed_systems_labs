@@ -390,8 +390,9 @@ where
 
     fn advance_commit_index(&mut self) {
         let leader_index = self.storage.last_log_index();
+        let total_peers = self.peers.as_ref().map(|p| p.len()).unwrap_or(0);
 
-        if let Some(new_commit) = self.match_index.compute_median(leader_index) {
+        if let Some(new_commit) = self.match_index.compute_median(leader_index, total_peers) {
             if new_commit > self.commit_index {
                 if let Some(entry) = self.storage.get_entry(new_commit) {
                     if entry.term == self.current_term {

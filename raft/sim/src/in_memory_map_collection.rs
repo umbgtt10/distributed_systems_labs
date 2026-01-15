@@ -31,16 +31,30 @@ impl MapCollection for InMemoryMapCollection {
         self.map.clear();
     }
 
-    fn compute_median(&self, additional_value: LogIndex) -> Option<LogIndex> {
-        if self.map.is_empty() {
-            return Some(additional_value);
+    fn compute_median(&self, leader_last_index: LogIndex, total_peers: usize) -> Option<LogIndex> {
+        let total_nodes = total_peers + 1; // peers + leader
+        let mut indices: Vec<LogIndex> = Vec::new();
+
+        // Add leader's own index
+        indices.push(leader_last_index);
+
+        // Add all peer match_index values
+        for (_, &index) in self.map.iter() {
+            indices.push(index);
         }
 
-        let mut values: Vec<LogIndex> = self.map.iter().map(|(_, v)| *v).collect();
-        values.push(additional_value);
-        values.sort_unstable();
+        // Pad with zeros for peers we haven't heard from
+        while indices.len() < total_nodes {
+            indices.push(0);
+        }
 
-        let majority_index = values.len() / 2;
-        Some(values[majority_index])
+        // Sort to find median
+        indices.sort_unstable();
+
+        // Median is at position that represents majority
+        // For N nodes, we need ceil(N/2) = (N+1)/2 nodes
+        // The commit index is the value at position: N - (N+1)/2 = (N-1)/2
+        let median_idx = (total_nodes - 1) / 2;
+        Some(indices[median_idx])
     }
 }

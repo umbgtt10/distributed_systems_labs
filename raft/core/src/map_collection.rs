@@ -10,5 +10,5 @@ pub trait MapCollection {
     fn get(&self, key: NodeId) -> Option<LogIndex>;
     fn values(&self) -> impl Iterator<Item = LogIndex> + '_;
     fn clear(&mut self);
-    fn compute_median(&self, additional_value: LogIndex) -> Option<LogIndex>;
+    fn compute_median(&self, leader_last_index: LogIndex, total_peers: usize) -> Option<LogIndex>;
 }

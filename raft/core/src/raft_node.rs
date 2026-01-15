@@ -142,20 +142,9 @@ where
             }
             Event::TimerFired(TimerKind::Heartbeat) => {
                 if self.role == NodeState::Leader {
-                    // send heartbeats
-                    for &peer in self.peers.as_ref().unwrap().iter() {
-                        self.transport.as_mut().unwrap().send(
-                            peer,
-                            RaftMsg::AppendEntries {
-                                term: self.current_term,
-                                prev_log_index: self.storage.last_log_index(),
-                                prev_log_term: self.storage.last_log_term(),
-                                entries: L::new(&[]), // empty for heartbeat
-                                leader_commit: self.commit_index,
-                            },
-                        );
-                    }
-                    // reset heartbeat timer
+                    // Send AppendEntries to all followers
+                    // This serves as both heartbeat AND log replication
+                    self.send_append_entries_to_followers();
                 }
             }
             Event::Message { from, msg } => {
@@ -225,6 +214,15 @@ where
 
                             if votes > total_nodes / 2 {
                                 self.role = NodeState::Leader;
+
+                                // Initialize next_index and match_index for all followers
+                                let next_log_index = self.storage.last_log_index() + 1;
+                                if let Some(peers) = &self.peers {
+                                    for peer in peers.iter() {
+                                        self.next_index.insert(*peer, next_log_index);
+                                        self.match_index.insert(*peer, 0);
+                                    }
+                                }
                             }
                         }
                     }
@@ -334,11 +332,14 @@ where
         }
     }
 
+    // ...existing code...
+
     fn send_append_entries_to_followers(&mut self) {
         for peer in self.peers.as_ref().unwrap().iter() {
             if let Some(transport) = self.transport.as_mut() {
-                // Get next_index for this follower (default to 1 if not tracked)
+                // Get next_index (should already be initialized when node became leader)
                 let next_idx = self.next_index.get(*peer).unwrap_or(1);
+
                 let prev_log_index = next_idx.saturating_sub(1);
                 let prev_log_term = if prev_log_index == 0 {
                     0
@@ -349,7 +350,6 @@ where
                         .unwrap_or(0)
                 };
 
-                // Get entries from next_idx to end
                 let entries = self
                     .storage
                     .get_entries(next_idx, self.storage.last_log_index() + 1);
@@ -367,6 +367,8 @@ where
             }
         }
     }
+
+    // ...existing code...
 
     fn check_log_consistency(&self, prev_log_index: LogIndex, prev_log_term: Term) -> bool {
         if prev_log_index == 0 {

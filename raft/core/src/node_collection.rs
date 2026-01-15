@@ -10,14 +10,16 @@ pub enum CollectionError {
 }
 
 pub trait NodeCollection {
-    type Iter<'a>: Iterator<Item = &'a NodeId>
+    type Iter<'a>: Iterator<Item = NodeId>
     where
         Self: 'a;
 
     fn new() -> Self;
-    fn clear(&mut self);
-    fn push(&mut self, id: NodeId) -> Result<(), CollectionError>;
+    fn push(&mut self, node_id: NodeId) -> Result<(), CollectionError>;
     fn len(&self) -> usize;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    fn clear(&mut self);
     fn iter(&self) -> Self::Iter<'_>;
-    fn is_empty(&self) -> bool;
 }

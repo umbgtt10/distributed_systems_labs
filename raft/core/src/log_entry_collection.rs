@@ -6,7 +6,7 @@ pub enum CollectionError {
 }
 
 pub trait LogEntryCollection {
-    type Payload;
+    type Payload: Clone;
     type Iter<'a>: Iterator<Item = &'a LogEntry<Self::Payload>>
     where
         Self: 'a,

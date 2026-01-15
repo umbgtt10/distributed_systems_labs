@@ -7,7 +7,7 @@ use crate::{
     types::NodeId,
 };
 
-pub enum Event<P, L: LogEntryCollection<Payload = P>> {
+pub enum Event<P: Clone, L: LogEntryCollection<Payload = P> + Clone> {
     Message { from: NodeId, msg: RaftMsg<P, L> },
     TimerFired(TimerKind),
     ClientCommand(P),

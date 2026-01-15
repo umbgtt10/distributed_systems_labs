@@ -4,9 +4,11 @@
 
 #![no_std]
 
+pub mod election_manager;
 pub mod event;
 pub mod log_entry;
 pub mod log_entry_collection;
+pub mod log_replication_manager;
 pub mod map_collection;
 pub mod node_collection;
 pub mod node_state;

@@ -12,4 +12,4 @@ pub mod no_action_timer;
 pub mod mocked_timer_service;
 pub mod timefull_test_cluster;
 pub mod timeless_test_cluster;
-pub mod vec_node_collection;
+pub mod in_memory_node_collection;

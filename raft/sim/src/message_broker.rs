@@ -7,11 +7,11 @@ use std::collections::{HashMap, VecDeque};
 
 type Queue<P, L> = VecDeque<(NodeId, RaftMsg<P, L>)>;
 
-pub struct MessageBroker<P, L: LogEntryCollection<Payload = P>> {
+pub struct MessageBroker<P: Clone, L: LogEntryCollection<Payload = P> + Clone> {
     queues: HashMap<NodeId, Queue<P, L>>,
 }
 
-impl<P, L: LogEntryCollection<Payload = P>> MessageBroker<P, L> {
+impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> MessageBroker<P, L> {
     pub fn new() -> Self {
         MessageBroker {
             queues: HashMap::new(),
@@ -49,7 +49,7 @@ impl<P, L: LogEntryCollection<Payload = P>> MessageBroker<P, L> {
     }
 }
 
-impl<P, L: LogEntryCollection<Payload = P>> Default for MessageBroker<P, L> {
+impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Default for MessageBroker<P, L> {
     fn default() -> Self {
         Self::new()
     }

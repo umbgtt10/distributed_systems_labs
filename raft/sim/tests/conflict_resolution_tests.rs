@@ -63,6 +63,13 @@ fn test_log_conflict_resolution() {
         .on_event(Event::ClientCommand("SET y=2".to_string()));
     cluster.deliver_messages();
 
+    // Leader's first attempt fails due to conflict
+    // Trigger heartbeat to retry with decremented next_index
+    cluster
+        .get_node_mut(3)
+        .on_event(Event::TimerFired(TimerKind::Heartbeat));
+    cluster.deliver_messages();
+
     // Assert - Node 2's conflicting entry at index 2 is overwritten
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 2);
 

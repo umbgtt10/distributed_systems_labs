@@ -4,10 +4,11 @@
 
 use crate::{
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_map_collection::InMemoryMapCollection, in_memory_state_machine::InMemoryStateMachine,
-    in_memory_storage::InMemoryStorage, in_memory_transport::InMemoryTransport,
-    message_broker::MessageBroker, no_action_timer::DummyTimer,
-    vec_node_collection::VecNodeCollection,
+    in_memory_map_collection::InMemoryMapCollection,
+    in_memory_node_collection::InMemoryNodeCollection,
+    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
+    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
+    no_action_timer::DummyTimer,
 };
 use indexmap::IndexMap;
 use raft_core::{
@@ -21,7 +22,7 @@ type InMemoryTimelessRaftNode = RaftNode<
     InMemoryStorage,
     String,
     InMemoryStateMachine,
-    VecNodeCollection,
+    InMemoryNodeCollection,
     InMemoryLogEntryCollection,
     InMemoryMapCollection,
     DummyTimer,
@@ -119,7 +120,7 @@ impl TimelessTestCluster {
     pub fn connect_peers(&mut self) {
         let peer_ids: Vec<NodeId> = self.nodes.keys().cloned().collect();
         for node in self.nodes.values_mut() {
-            let mut peers = VecNodeCollection::new();
+            let mut peers = InMemoryNodeCollection::new();
             for &pid in &peer_ids {
                 if pid != node.id() {
                     peers.push(pid).ok();

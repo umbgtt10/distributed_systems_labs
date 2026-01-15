@@ -10,6 +10,7 @@ use raft_core::{
     types::{LogIndex, NodeId, Term},
 };
 
+#[derive(Clone, Debug)]
 pub struct InMemoryStorage {
     current_term: Term,
     voted_for: Option<NodeId>,

@@ -3,11 +3,12 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    event::Event, node_collection::NodeCollection, node_state::NodeState, raft_messages::RaftMsg,
-    timer_service::TimerKind,
+    event::Event, log_entry_collection::LogEntryCollection, node_collection::NodeCollection,
+    node_state::NodeState, raft_messages::RaftMsg, timer_service::TimerKind,
 };
 use raft_sim::{
-    timeless_test_cluster::TimelessTestCluster, vec_node_collection::VecNodeCollection,
+    in_memory_log_entry_collection::InMemoryLogEntryCollection,
+    in_memory_node_collection::InMemoryNodeCollection, timeless_test_cluster::TimelessTestCluster,
 };
 
 #[test]
@@ -43,21 +44,21 @@ fn test_connection() {
     cluster.connect_peers();
 
     let expected_peers_1 = {
-        let mut peers = VecNodeCollection::new();
+        let mut peers = InMemoryNodeCollection::new();
         peers.push(2).unwrap();
         peers.push(3).unwrap();
         peers
     };
 
     let expected_peers_2 = {
-        let mut peers = VecNodeCollection::new();
+        let mut peers = InMemoryNodeCollection::new();
         peers.push(1).unwrap();
         peers.push(3).unwrap();
         peers
     };
 
     let expected_peers_3 = {
-        let mut peers = VecNodeCollection::new();
+        let mut peers = InMemoryNodeCollection::new();
         peers.push(1).unwrap();
         peers.push(2).unwrap();
         peers
@@ -100,28 +101,56 @@ fn test_election_triggered_followers_respond() {
     cluster.add_node(3);
     cluster.connect_peers();
 
-    let expected_from_1_to_2 = RaftMsg::RequestVote {
+    let expected_vote_request_to_2 = RaftMsg::RequestVote {
         term: 1,
         candidate_id: 1,
         last_log_index: 0,
         last_log_term: 0,
     };
 
-    let expected_from_1_to_3 = RaftMsg::RequestVote {
+    let expected_vote_request_to_3 = RaftMsg::RequestVote {
         term: 1,
         candidate_id: 1,
         last_log_index: 0,
         last_log_term: 0,
     };
 
-    let expected_response_from_2_to_1 = RaftMsg::RequestVoteResponse {
+    let expected_heartbeat_to_2 = RaftMsg::AppendEntries {
+        term: 1,
+        prev_log_index: 0,
+        prev_log_term: 0,
+        entries: InMemoryLogEntryCollection::new(&[]),
+        leader_commit: 0,
+    };
+
+    let expected_heartbeat_to_3 = RaftMsg::AppendEntries {
+        term: 1,
+        prev_log_index: 0,
+        prev_log_term: 0,
+        entries: InMemoryLogEntryCollection::new(&[]),
+        leader_commit: 0,
+    };
+
+    let expected_vote_response_from_2 = RaftMsg::RequestVoteResponse {
         term: 1,
         vote_granted: true,
     };
 
-    let expected_response_from_3_to_1 = RaftMsg::RequestVoteResponse {
+    let expected_vote_response_from_3 = RaftMsg::RequestVoteResponse {
         term: 1,
         vote_granted: true,
+    };
+
+    let expected_heartbeat_response_from_2 = RaftMsg::AppendEntriesResponse {
+        term: 1,
+        success: true,
+        match_index: 0,
+    };
+
+    let expected_heartbeat_response_from_3 = RaftMsg::AppendEntriesResponse {
+        term: 1,
+        success: true,
+        match_index: 0,
     };
 
     // Act
@@ -131,14 +160,30 @@ fn test_election_triggered_followers_respond() {
 
     cluster.deliver_messages();
 
-    // Assert
-    assert_eq!(cluster.get_messages(2), vec![expected_from_1_to_2]);
-    assert_eq!(cluster.get_messages(3), vec![expected_from_1_to_3]);
+    // Assert - Node 2 receives vote request AND heartbeat (leader sends heartbeat immediately)
     assert_eq!(
-        cluster.get_messages(1),
-        vec![expected_response_from_2_to_1, expected_response_from_3_to_1]
+        cluster.get_messages(2),
+        vec![expected_vote_request_to_2, expected_heartbeat_to_2]
     );
 
+    // Assert - Node 3 receives vote request AND heartbeat
+    assert_eq!(
+        cluster.get_messages(3),
+        vec![expected_vote_request_to_3, expected_heartbeat_to_3]
+    );
+
+    // Assert - Node 1 receives vote responses AND heartbeat responses
+    assert_eq!(
+        cluster.get_messages(1),
+        vec![
+            expected_vote_response_from_2,
+            expected_vote_response_from_3,
+            expected_heartbeat_response_from_2,
+            expected_heartbeat_response_from_3
+        ]
+    );
+
+    // Assert - Node 1 is now leader
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
     assert_eq!(cluster.get_node(1).current_term(), 1);
 }

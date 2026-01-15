@@ -8,24 +8,24 @@ use raft_core::{
 };
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VecNodeCollection {
+pub struct InMemoryNodeCollection {
     nodes: Vec<NodeId>,
 }
 
-impl VecNodeCollection {
+impl InMemoryNodeCollection {
     pub fn new() -> Self {
         Self { nodes: Vec::new() }
     }
 }
 
-impl Default for VecNodeCollection {
+impl Default for InMemoryNodeCollection {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl NodeCollection for VecNodeCollection {
-    type Iter<'a> = std::slice::Iter<'a, NodeId>;
+impl NodeCollection for InMemoryNodeCollection {
+    type Iter<'a> = core::iter::Copied<core::slice::Iter<'a, NodeId>>;
 
     fn new() -> Self {
         Self { nodes: Vec::new() }
@@ -45,10 +45,6 @@ impl NodeCollection for VecNodeCollection {
     }
 
     fn iter(&self) -> Self::Iter<'_> {
-        self.nodes.iter()
-    }
-
-    fn is_empty(&self) -> bool {
-        self.nodes.is_empty()
+        self.nodes.iter().copied()
     }
 }

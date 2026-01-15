@@ -23,6 +23,14 @@ impl MapCollection for InMemoryMapCollection {
         self.map.get(&key).cloned()
     }
 
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    fn is_empty(&self) -> bool {
+        self.map.is_empty()
+    }
+
     fn values(&self) -> impl Iterator<Item = LogIndex> + '_ {
         self.map.values().cloned()
     }

@@ -8,7 +8,7 @@ use crate::{
 };
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum RaftMsg<P, L: LogEntryCollection<Payload = P>> {
+pub enum RaftMsg<P: Clone, L: LogEntryCollection<Payload = P> + Clone> {
     RequestVote {
         term: Term,
         candidate_id: NodeId,

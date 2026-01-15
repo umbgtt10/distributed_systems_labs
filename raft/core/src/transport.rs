@@ -5,8 +5,8 @@
 use crate::{log_entry_collection::LogEntryCollection, raft_messages::RaftMsg, types::NodeId};
 
 pub trait Transport {
-    type Payload;
-    type LogEntries: LogEntryCollection<Payload = Self::Payload>;
+    type Payload: Clone;
+    type LogEntries: LogEntryCollection<Payload = Self::Payload> + Clone;
 
     fn send(&mut self, target: NodeId, msg: RaftMsg<Self::Payload, Self::LogEntries>);
 }

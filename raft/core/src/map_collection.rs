@@ -8,6 +8,8 @@ pub trait MapCollection {
     fn new() -> Self;
     fn insert(&mut self, key: NodeId, value: LogIndex);
     fn get(&self, key: NodeId) -> Option<LogIndex>;
+    fn len(&self) -> usize;
+    fn is_empty(&self) -> bool;
     fn values(&self) -> impl Iterator<Item = LogIndex> + '_;
     fn clear(&mut self);
     fn compute_median(&self, leader_last_index: LogIndex, total_peers: usize) -> Option<LogIndex>;

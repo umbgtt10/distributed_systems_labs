@@ -1,0 +1,37 @@
+[package]
+name = "raft-embassy-sim"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+raft-core = { path = "../core" }
+
+# Embassy core - Cortex-M with custom time driver
+embassy-executor = { version = "0.9.1", features = ["arch-cortex-m", "executor-thread"] }
+embassy-time = { version = "0.5", features = ["generic-queue-8", "tick-hz-1_000"] }
+embassy-time-driver = { version = "0.2.1" }
+embassy-sync = "0.7.2"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"], default-features = false }
+postcard = { version = "1.0", features = ["alloc"] }
+
+# Utilities
+heapless = "0.9.2"
+defmt = "1.0.1"
+
+# Embedded essentials
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+panic-semihosting = "0.6"
+embedded-alloc = "0.7.0"
+
+[features]
+default = ["channel-transport"]
+channel-transport = []
+udp-transport = []
+
+[[bin]]
+name = "embassy-sim"
+path = "src/main.rs"

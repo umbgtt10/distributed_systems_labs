@@ -1,0 +1,8 @@
+[build]
+target = "thumbv7em-none-eabihf"  # Cortex-M4F
+
+[target.thumbv7em-none-eabihf]
+runner = "qemu-system-arm -cpu cortex-m4 -machine mps2-an386 -nographic -semihosting-config enable=on,target=native -kernel"
+
+[env]
+CARGO_TARGET_DIR = { value = "target", relative = true }

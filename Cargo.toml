@@ -12,6 +12,7 @@ members = [
     "key-value-server/server-sled-db",
     "raft/core",
     "raft/sim",
+    "raft/embassy-sim",
 ]
 
 [workspace.dependencies]

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 
 use raft_core::state_machine::StateMachine;
 
+#[derive(Clone)]
 pub struct InMemoryStateMachine {
     data: HashMap<String, String>,
 }

@@ -2,6 +2,14 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use indexmap::IndexMap;
+use raft_core::{
+    election_manager::ElectionManager, event::Event,
+    log_replication_manager::LogReplicationManager, node_collection::NodeCollection,
+    raft_node::RaftNode, raft_node_builder::RaftNodeBuilder, types::NodeId,
+};
+use std::sync::{Arc, Mutex};
+
 use crate::{
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
@@ -10,14 +18,8 @@ use crate::{
     in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
     no_action_timer::DummyTimer,
 };
-use indexmap::IndexMap;
-use raft_core::{
-    event::Event, node_collection::NodeCollection, raft_messages::RaftMsg, raft_node::RaftNode,
-    types::NodeId,
-};
-use std::sync::{Arc, Mutex};
 
-type InMemoryTimelessRaftNode = RaftNode<
+pub type TestNode = RaftNode<
     InMemoryTransport,
     InMemoryStorage,
     String,
@@ -29,38 +31,148 @@ type InMemoryTimelessRaftNode = RaftNode<
 >;
 
 pub struct TimelessTestCluster {
-    nodes: IndexMap<NodeId, InMemoryTimelessRaftNode>,
-    broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
-    message_log: Vec<(NodeId, NodeId, RaftMsg<String, InMemoryLogEntryCollection>)>,
-    partitions: Option<(Vec<NodeId>, Vec<NodeId>)>,
+    nodes: IndexMap<NodeId, TestNode>,
+    message_broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
+    message_log: Vec<(
+        NodeId,
+        NodeId,
+        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>,
+    )>,
+    partition_groups: Option<(Vec<NodeId>, Vec<NodeId>)>,
 }
 
 impl TimelessTestCluster {
     pub fn new() -> Self {
         Self {
             nodes: IndexMap::new(),
-            broker: Arc::new(Mutex::new(MessageBroker::new())),
+            message_broker: Arc::new(Mutex::new(MessageBroker::new())),
             message_log: Vec::new(),
-            partitions: None,
+            partition_groups: None,
         }
     }
 
-    pub fn get_node(&self, id: NodeId) -> &InMemoryTimelessRaftNode {
-        &self.nodes[&id]
+    pub fn add_node(&mut self, id: NodeId) {
+        self.add_node_with_storage(id, InMemoryStorage::new());
     }
 
-    pub fn get_node_mut(&mut self, id: NodeId) -> &mut InMemoryTimelessRaftNode {
-        self.nodes.get_mut(&id).unwrap()
+    pub fn add_node_with_storage(&mut self, id: NodeId, storage: InMemoryStorage) {
+        let transport = InMemoryTransport::new(id, self.message_broker.clone());
+
+        let node = RaftNodeBuilder::new(id, storage, InMemoryStateMachine::new())
+            .with_election(ElectionManager::new(DummyTimer))
+            .with_replication(LogReplicationManager::new())
+            .with_transport(transport, InMemoryNodeCollection::new());
+
+        self.nodes.insert(id, node);
+    }
+
+    pub fn connect_peers(&mut self) {
+        let node_ids: Vec<NodeId> = self.nodes.keys().copied().collect();
+
+        for &node_id in &node_ids {
+            // Build expected peer list for this node
+            let mut expected_peers = InMemoryNodeCollection::new();
+            for &peer_id in &node_ids {
+                if peer_id != node_id {
+                    expected_peers.push(peer_id).unwrap();
+                }
+            }
+
+            // Skip if this node already has the correct peers
+            if let Some(current_peers) = self.nodes[&node_id].peers() {
+                if current_peers.len() == expected_peers.len() {
+                    let mut peers_match = true;
+                    for peer_id in expected_peers.iter() {
+                        let mut found = false;
+                        for current_peer_id in current_peers.iter() {
+                            if current_peer_id == peer_id {
+                                found = true;
+                                break;
+                            }
+                        }
+                        if !found {
+                            peers_match = false;
+                            break;
+                        }
+                    }
+                    if peers_match {
+                        continue;
+                    }
+                }
+            }
+
+            // Get the old node's storage and state machine
+            let old_node = self.nodes.swap_remove(&node_id).unwrap();
+            let storage = old_node.storage().clone();
+            let state_machine = old_node.state_machine().clone();
+
+            // Create new transport with same broker
+            let transport = InMemoryTransport::new(node_id, self.message_broker.clone());
+
+            // Re-create the node with updated peers
+            let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
+                .with_election(ElectionManager::new(DummyTimer))
+                .with_replication(LogReplicationManager::new())
+                .with_transport(transport, expected_peers);
+
+            self.nodes.insert(node_id, new_node);
+        }
+    }
+
+    pub fn deliver_messages(&mut self) {
+        loop {
+            // Collect all messages first to avoid borrowing issues
+            let mut messages_to_deliver = Vec::new();
+            {
+                let mut broker = self.message_broker.lock().unwrap();
+                for &node_id in self.nodes.keys() {
+                    while let Some((from, msg)) = broker.dequeue(node_id) {
+                        // Check if partition is active
+                        let should_deliver = if let Some((group1, group2)) = &self.partition_groups
+                        {
+                            (group1.contains(&from) && group1.contains(&node_id))
+                                || (group2.contains(&from) && group2.contains(&node_id))
+                        } else {
+                            true
+                        };
+
+                        if should_deliver {
+                            messages_to_deliver.push((node_id, from, msg));
+                        }
+                    }
+                }
+            }
+
+            if messages_to_deliver.is_empty() {
+                break;
+            }
+
+            // Now deliver messages to nodes (lock released at end of scope above)
+            for (to, from, msg) in messages_to_deliver {
+                self.message_log.push((from, to, msg.clone()));
+                if let Some(node) = self.nodes.get_mut(&to) {
+                    node.on_event(Event::Message { from, msg });
+                }
+            }
+        }
+    }
+
+    pub fn get_node(&self, id: NodeId) -> &TestNode {
+        self.nodes.get(&id).expect("Node not found")
+    }
+
+    pub fn get_node_mut(&mut self, id: NodeId) -> &mut TestNode {
+        self.nodes.get_mut(&id).expect("Node not found")
     }
 
     pub fn get_node_ids(&self) -> Vec<NodeId> {
-        self.nodes.keys().cloned().collect()
+        self.nodes.keys().copied().collect()
     }
 
     pub fn get_messages(
         &self,
         recipient: NodeId,
-    ) -> Vec<RaftMsg<String, InMemoryLogEntryCollection>> {
+    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>> {
         self.message_log
             .iter()
             .filter(|(_, to, _)| *to == recipient)
@@ -68,21 +180,14 @@ impl TimelessTestCluster {
             .collect()
     }
 
-    pub fn get_messages_from(
-        &self,
-        sender: NodeId,
-        recipient: NodeId,
-    ) -> Vec<RaftMsg<String, InMemoryLogEntryCollection>> {
-        self.message_log
-            .iter()
-            .filter(|(from, to, _)| *from == sender && *to == recipient)
-            .map(|(_, _, msg)| msg.clone())
-            .collect()
-    }
-
+    /// Get all messages in the message log
     pub fn get_all_messages(
         &self,
-    ) -> &[(NodeId, NodeId, RaftMsg<String, InMemoryLogEntryCollection>)] {
+    ) -> &[(
+        NodeId,
+        NodeId,
+        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>,
+    )] {
         &self.message_log
     }
 
@@ -90,120 +195,63 @@ impl TimelessTestCluster {
         self.message_log.len()
     }
 
+    /// Get messages from a specific sender to a specific recipient
+    pub fn get_messages_from(
+        &self,
+        from: NodeId,
+        to: NodeId,
+    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>> {
+        self.message_log
+            .iter()
+            .filter(|(f, t, _)| *f == from && *t == to)
+            .map(|(_, _, msg)| msg.clone())
+            .collect()
+    }
+
+    /// Clear the message log
     pub fn clear_message_log(&mut self) {
         self.message_log.clear();
     }
 
-    pub fn add_node(&mut self, id: NodeId) {
-        let transport = InMemoryTransport::new(id, self.broker.clone());
-        let mut node = RaftNode::new(
-            id,
-            InMemoryStorage::new(),
-            InMemoryStateMachine::new(),
-            DummyTimer,
-        );
-        node.set_transport(transport);
-        self.nodes.insert(id, node);
-    }
-
-    pub fn add_node_with_storage(&mut self, id: NodeId, storage: InMemoryStorage) {
-        let transport = InMemoryTransport::new(id, self.broker.clone());
-        let mut node = RaftNode::new(id, storage, InMemoryStateMachine::new(), DummyTimer);
-        node.set_transport(transport);
-        self.nodes.insert(id, node);
-    }
-
-    pub fn remove_node(&mut self, id: NodeId) {
-        self.nodes.shift_remove(&id);
-    }
-
-    pub fn connect_peers(&mut self) {
-        let peer_ids: Vec<NodeId> = self.nodes.keys().cloned().collect();
-        for node in self.nodes.values_mut() {
-            let mut peers = InMemoryNodeCollection::new();
-            for &pid in &peer_ids {
-                if pid != node.id() {
-                    peers.push(pid).ok();
-                }
-            }
-            node.set_peers(peers);
-        }
-    }
-
-    pub fn deliver_messages(&mut self) {
-        loop {
-            // Collect all messages first, then deliver them
-            let mut messages_to_deliver = Vec::new();
-            {
-                let mut broker = self.broker.lock().unwrap();
-                for &node_id in self.nodes.keys() {
-                    while let Some((from, msg)) = broker.dequeue(node_id) {
-                        messages_to_deliver.push((node_id, from, msg));
-                    }
-                }
-            }
-
-            if messages_to_deliver.is_empty() {
-                break;
-            }
-
-            // Now deliver all collected messages
-            for (node_id, from, msg) in messages_to_deliver {
-                self.message_log.push((from, node_id, msg.clone()));
-
-                let node = self.nodes.get_mut(&node_id).unwrap();
-                node.on_event(Event::Message { from, msg });
-            }
-        }
-    }
-
+    /// Deliver a single message from one node to another
     pub fn deliver_message_from_to(&mut self, from: NodeId, to: NodeId) {
-        let mut broker = self.broker.lock().unwrap();
-
-        // Find and remove the specific message
+        let mut broker = self.message_broker.lock().unwrap();
         if let Some((sender, msg)) = broker.dequeue_from(to, from) {
-            drop(broker); // Release lock before calling on_event
-
-            // Record and deliver
+            drop(broker); // Release lock before processing
             self.message_log.push((sender, to, msg.clone()));
-
-            let node = self.nodes.get_mut(&to).unwrap();
-            node.on_event(Event::Message { from: sender, msg });
+            if let Some(node) = self.nodes.get_mut(&to) {
+                node.on_event(Event::Message { from: sender, msg });
+            }
         }
     }
 
-    /// Partition the cluster into two groups
-    /// Messages can only be delivered within each partition
-    pub fn partition(&mut self, partition1: &[NodeId], partition2: &[NodeId]) {
-        self.partitions = Some((partition1.to_vec(), partition2.to_vec()));
+    /// Remove a node from the cluster
+    pub fn remove_node(&mut self, id: NodeId) {
+        self.nodes.swap_remove(&id);
     }
 
-    /// Heal the partition - allow messages between all nodes
+    /// Partition the network into two groups
+    pub fn partition(&mut self, group1: &[NodeId], group2: &[NodeId]) {
+        self.partition_groups = Some((group1.to_vec(), group2.to_vec()));
+    }
+
+    /// Heal the network partition
     pub fn heal_partition(&mut self) {
-        self.partitions = None;
+        self.partition_groups = None;
     }
 
-    /// Deliver messages only within a specific partition
+    /// Deliver messages only within the specified partition
     pub fn deliver_messages_partition(&mut self, partition: &[NodeId]) {
-        let mut delivered_any = true;
-        let mut rounds = 0;
-        const MAX_ROUNDS: usize = 10;
-
-        while delivered_any && rounds < MAX_ROUNDS {
-            delivered_any = false;
-            rounds += 1;
-
-            // Collect messages within this partition
+        loop {
             let mut messages_to_deliver = Vec::new();
             {
-                let mut broker = self.broker.lock().unwrap();
+                let mut broker = self.message_broker.lock().unwrap();
                 for &node_id in partition {
-                    // Only deliver messages if both sender and receiver are in partition
                     while let Some((from, msg)) = broker.dequeue(node_id) {
+                        // Only deliver if sender is also in the partition
                         if partition.contains(&from) {
                             messages_to_deliver.push((node_id, from, msg));
                         }
-                        // If sender not in partition, message is dropped (simulates network partition)
                     }
                 }
             }
@@ -212,13 +260,11 @@ impl TimelessTestCluster {
                 break;
             }
 
-            // Deliver collected messages
-            for (node_id, from, msg) in messages_to_deliver {
-                self.message_log.push((from, node_id, msg.clone()));
-
-                let node = self.nodes.get_mut(&node_id).unwrap();
-                node.on_event(Event::Message { from, msg });
-                delivered_any = true;
+            for (to, from, msg) in messages_to_deliver {
+                self.message_log.push((from, to, msg.clone()));
+                if let Some(node) = self.nodes.get_mut(&to) {
+                    node.on_event(Event::Message { from, msg });
+                }
             }
         }
     }

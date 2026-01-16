@@ -14,6 +14,7 @@ pub mod node_collection;
 pub mod node_state;
 pub mod raft_messages;
 pub mod raft_node;
+pub mod raft_node_builder;
 pub mod state_machine;
 pub mod storage;
 pub mod timer_service;

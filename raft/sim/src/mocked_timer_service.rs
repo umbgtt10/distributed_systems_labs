@@ -35,6 +35,7 @@ impl Default for MockClock {
 }
 
 /// Mock timer service with controllable time
+#[derive(Clone)]
 pub struct MockTimerService {
     election_deadline: Option<u64>,
     heartbeat_deadline: Option<u64>,

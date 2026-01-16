@@ -5,15 +5,17 @@
 use crate::mocked_timer_service::{MockClock, MockTimerService};
 use crate::{
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_map_collection::InMemoryMapCollection, in_memory_state_machine::InMemoryStateMachine,
-    in_memory_storage::InMemoryStorage, in_memory_transport::InMemoryTransport,
-    message_broker::MessageBroker, in_memory_node_collection::InMemoryNodeCollection,
+    in_memory_map_collection::InMemoryMapCollection,
+    in_memory_node_collection::InMemoryNodeCollection,
+    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
+    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
 };
 use indexmap::IndexMap;
 use raft_core::timer_service::TimerService;
 use raft_core::{
-    event::Event, node_collection::NodeCollection, raft_messages::RaftMsg, raft_node::RaftNode,
-    types::NodeId,
+    election_manager::ElectionManager, event::Event,
+    log_replication_manager::LogReplicationManager, node_collection::NodeCollection,
+    raft_messages::RaftMsg, raft_node::RaftNode, raft_node_builder::RaftNodeBuilder, types::NodeId,
 };
 use std::sync::{Arc, Mutex};
 type InMemoryTimefullRaftNode = RaftNode<
@@ -68,13 +70,12 @@ impl TimefullTestCluster {
             id,
         );
 
-        let mut node = RaftNode::new(
-            id,
-            InMemoryStorage::new(),
-            InMemoryStateMachine::new(),
-            timer,
-        );
-        node.set_transport(transport);
+        let peers = InMemoryNodeCollection::new();
+        let node = RaftNodeBuilder::new(id, InMemoryStorage::new(), InMemoryStateMachine::new())
+            .with_election(ElectionManager::new(timer))
+            .with_replication(LogReplicationManager::new())
+            .with_transport(transport, peers);
+
         self.nodes.insert(id, node);
     }
 
@@ -85,14 +86,33 @@ impl TimefullTestCluster {
 
     pub fn connect_peers(&mut self) {
         let peer_ids: Vec<NodeId> = self.nodes.keys().cloned().collect();
-        for node in self.nodes.values_mut() {
+        let node_ids: Vec<NodeId> = self.nodes.keys().cloned().collect();
+
+        for &node_id in &node_ids {
+            // Build peer list for this node
             let mut peers = InMemoryNodeCollection::new();
             for &pid in &peer_ids {
-                if pid != node.id() {
+                if pid != node_id {
                     peers.push(pid).ok();
                 }
             }
-            node.set_peers(peers);
+
+            // Get the old node's storage and state machine
+            let old_node = self.nodes.swap_remove(&node_id).unwrap();
+            let storage = old_node.storage().clone();
+            let state_machine = old_node.state_machine().clone();
+            let timer = old_node.timer_service().clone();
+
+            // Create new transport with same broker
+            let transport = InMemoryTransport::new(node_id, self.broker.clone());
+
+            // Re-create the node with updated peers
+            let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
+                .with_election(ElectionManager::new(timer))
+                .with_replication(LogReplicationManager::new())
+                .with_transport(transport, peers);
+
+            self.nodes.insert(node_id, new_node);
         }
     }
 

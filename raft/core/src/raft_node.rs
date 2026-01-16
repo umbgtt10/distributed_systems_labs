@@ -31,10 +31,10 @@ where
     TS: TimerService,
 {
     id: NodeId,
-    peers: Option<C>,
+    peers: C,
     role: NodeState,
     current_term: Term,
-    transport: Option<T>,
+    transport: T,
     storage: S,
     state_machine: SM,
 
@@ -54,17 +54,27 @@ where
     M: MapCollection,
     TS: TimerService,
 {
-    pub fn new(id: NodeId, storage: S, state_machine: SM, timer_service: TS) -> Self {
+    /// Internal constructor - use RaftNodeBuilder instead
+    pub(crate) fn new_from_builder(
+        id: NodeId,
+        storage: S,
+        state_machine: SM,
+        election: ElectionManager<C, TS>,
+        replication: LogReplicationManager<M>,
+        transport: T,
+        peers: C,
+    ) -> Self {
+        let current_term = storage.current_term();
         RaftNode {
             id,
-            peers: None,
+            peers,
             role: NodeState::Follower,
-            current_term: storage.current_term(),
-            transport: None,
+            current_term,
+            transport,
             storage,
             state_machine,
-            election: ElectionManager::new(timer_service),
-            replication: LogReplicationManager::new(),
+            election,
+            replication,
         }
     }
 
@@ -93,7 +103,11 @@ where
     }
 
     pub fn peers(&self) -> Option<&C> {
-        self.peers.as_ref()
+        if self.peers.is_empty() {
+            None
+        } else {
+            Some(&self.peers)
+        }
     }
 
     pub fn state_machine(&self) -> &SM {
@@ -102,14 +116,6 @@ where
 
     pub fn timer_service(&self) -> &TS {
         self.election.timer_service()
-    }
-
-    pub fn set_peers(&mut self, peers: C) {
-        self.peers = Some(peers);
-    }
-
-    pub fn set_transport(&mut self, transport: T) {
-        self.transport = Some(transport);
     }
 
     // ============================================================
@@ -165,7 +171,7 @@ where
                     return;
                 }
 
-                let total_peers = self.peers.as_ref().map(|p| p.len()).unwrap_or(0);
+                let total_peers = self.peers.len();
                 let should_become_leader = self.election.handle_vote_response(
                     from,
                     term,
@@ -261,11 +267,9 @@ where
     fn become_leader(&mut self) {
         self.role = NodeState::Leader;
 
-        // Initialize replication state - pass iterator directly
-        if let Some(peers) = &self.peers {
-            self.replication
-                .initialize_leader_state(peers.iter(), &self.storage);
-        }
+        // Initialize replication state
+        self.replication
+            .initialize_leader_state(self.peers.iter(), &self.storage);
 
         self.election.timer_service_mut().stop_timers();
         self.election.timer_service_mut().reset_heartbeat_timer();
@@ -287,28 +291,19 @@ where
     // ============================================================
 
     fn send(&mut self, to: NodeId, msg: RaftMsg<P, L>) {
-        if let Some(transport) = self.transport.as_mut() {
-            transport.send(to, msg);
-        }
+        self.transport.send(to, msg);
     }
 
     fn broadcast(&mut self, msg: RaftMsg<P, L>) {
         // Collect peer IDs first to avoid borrowing issues
-        let peer_ids = if let Some(peers) = &self.peers {
-            let mut ids = C::new();
-            for peer in peers.iter() {
-                ids.push(peer).ok();
-            }
-            Some(ids)
-        } else {
-            None
-        };
+        let mut ids = C::new();
+        for peer in self.peers.iter() {
+            ids.push(peer).ok();
+        }
 
         // Now send to each peer
-        if let Some(ids) = peer_ids {
-            for peer in ids.iter() {
-                self.send(peer, msg.clone());
-            }
+        for peer in ids.iter() {
+            self.send(peer, msg.clone());
         }
     }
 
@@ -319,26 +314,19 @@ where
 
     fn send_append_entries_to_followers(&mut self) {
         // Collect peer IDs first to avoid borrowing issues
-        let peer_ids = if let Some(peers) = &self.peers {
-            let mut ids = C::new();
-            for peer in peers.iter() {
-                ids.push(peer).ok();
-            }
-            Some(ids)
-        } else {
-            None
-        };
+        let mut ids = C::new();
+        for peer in self.peers.iter() {
+            ids.push(peer).ok();
+        }
 
         // Now send to each peer
-        if let Some(ids) = peer_ids {
-            for peer in ids.iter() {
-                let msg = self.replication.get_append_entries_for_follower(
-                    peer,
-                    self.current_term,
-                    &self.storage,
-                );
-                self.send(peer, msg);
-            }
+        for peer in ids.iter() {
+            let msg = self.replication.get_append_entries_for_follower(
+                peer,
+                self.current_term,
+                &self.storage,
+            );
+            self.send(peer, msg);
         }
     }
 }

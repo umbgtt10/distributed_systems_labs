@@ -12,23 +12,21 @@ use embassy_time::Duration;
 use panic_semihosting as _;
 
 #[macro_use]
-mod logging;
-mod cancellation_token;
-mod embassy_log_collection;
-mod embassy_map_collection;
-mod embassy_node;
-mod embassy_node_collection;
-mod embassy_state_machine;
-mod embassy_storage;
-mod embassy_timer;
-mod heap;
-mod led_state;
-mod time_driver;
-mod transport;
+pub mod logging;
+pub mod cancellation_token;
+pub mod embassy_log_collection;
+pub mod embassy_map_collection;
+pub mod embassy_node;
+pub mod embassy_node_collection;
+pub mod embassy_state_machine;
+pub mod embassy_storage;
+pub mod embassy_timer;
+pub mod heap;
+pub mod led_state;
+pub mod time_driver;
+pub mod transport;
 
 use cancellation_token::CancellationToken;
-use embassy_node::raft_node_task;
-use transport::channel::ChannelTransportHub;
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -41,19 +39,10 @@ async fn main(spawner: Spawner) {
     info!("Starting 5-node Raft cluster in Embassy");
     info!("Runtime: 30 seconds");
 
-    let cancel = CancellationToken::new();
+    let cancel = CancellationToken::default();
 
-    // Create transport hub (manages all inter-node channels)
-    let transport_hub = ChannelTransportHub::new();
-
-    // Spawn 5 Raft node tasks
-    for node_id in 1..=5 {
-        let transport = transport_hub.create_transport(node_id);
-        spawner
-            .spawn(raft_node_task(node_id, transport, cancel.clone()))
-            .unwrap();
-        info!("Spawned node {}", node_id);
-    }
+    // Initialize cluster (handles all network/channel setup internally)
+    transport::setup::initialize_cluster(spawner, cancel.clone()).await;
 
     info!("All nodes started. Observing consensus...");
 

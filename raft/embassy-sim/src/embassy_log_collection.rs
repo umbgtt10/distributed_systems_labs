@@ -2,21 +2,21 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use alloc::string::String;
 use heapless::Vec;
 use raft_core::{
     log_entry::LogEntry,
     log_entry_collection::{CollectionError, LogEntryCollection},
 };
 
-/// no_std LogEntryCollection using heapless::Vec with fixed capacity
 #[derive(Debug, Clone, PartialEq)]
 pub struct EmbassyLogEntryCollection {
-    entries: Vec<LogEntry<alloc::string::String>, 128>, // Max 128 entries
+    entries: Vec<LogEntry<String>, 128>, // Max 128 entries
 }
 
 impl LogEntryCollection for EmbassyLogEntryCollection {
-    type Payload = alloc::string::String;
-    type Iter<'a> = core::slice::Iter<'a, LogEntry<alloc::string::String>>;
+    type Payload = String;
+    type Iter<'a> = core::slice::Iter<'a, LogEntry<String>>;
 
     fn new(entries: &[LogEntry<Self::Payload>]) -> Self {
         let mut vec = Vec::new();

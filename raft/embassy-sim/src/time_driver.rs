@@ -5,12 +5,14 @@
 use core::cell::Cell;
 use core::task::Waker;
 use cortex_m::interrupt::Mutex;
+use cortex_m::peripheral::syst::SystClkSource;
 use cortex_m::peripheral::SYST;
 use cortex_m_rt::exception;
 use embassy_time_driver::Driver;
 
 struct SystickDriver;
 
+static TICKS: Mutex<Cell<u64>> = Mutex::new(Cell::new(0));
 embassy_time_driver::time_driver_impl!(static DRIVER: SystickDriver = SystickDriver);
 
 impl Driver for SystickDriver {
@@ -25,8 +27,6 @@ impl Driver for SystickDriver {
     }
 }
 
-static TICKS: Mutex<Cell<u64>> = Mutex::new(Cell::new(0));
-
 #[exception]
 fn SysTick() {
     cortex_m::interrupt::free(|cs| {
@@ -37,7 +37,7 @@ fn SysTick() {
 }
 
 pub fn init(syst: &mut SYST) {
-    syst.set_clock_source(cortex_m::peripheral::syst::SystClkSource::Core);
+    syst.set_clock_source(SystClkSource::Core);
     // MPS2-AN386 runs at 25MHz. 25_000_000 / 1000 = 25_000 ticks = 1ms
     syst.set_reload(25_000 - 1);
     syst.clear_current();

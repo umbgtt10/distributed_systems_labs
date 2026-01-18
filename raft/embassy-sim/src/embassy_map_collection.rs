@@ -6,7 +6,6 @@ use heapless::index_map::FnvIndexMap;
 use raft_core::map_collection::MapCollection;
 use raft_core::types::{LogIndex, NodeId};
 
-/// no_std implementation of MapCollection using heapless::FnvIndexMap
 #[derive(Debug, Clone)]
 pub struct EmbassyMapCollection {
     map: FnvIndexMap<NodeId, LogIndex, 8>,

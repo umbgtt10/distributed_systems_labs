@@ -26,3 +26,9 @@ impl CancellationToken {
         self.signal.signaled()
     }
 }
+
+impl Default for CancellationToken {
+    fn default() -> Self {
+        Self::new()
+    }
+}

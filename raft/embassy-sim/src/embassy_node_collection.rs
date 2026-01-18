@@ -6,7 +6,6 @@ use heapless::Vec;
 use raft_core::node_collection::{CollectionError, NodeCollection};
 use raft_core::types::NodeId;
 
-/// no_std implementation of NodeCollection using heapless::Vec
 #[derive(Debug, Clone)]
 pub struct EmbassyNodeCollection {
     nodes: Vec<NodeId, 10>,

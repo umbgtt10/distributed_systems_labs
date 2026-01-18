@@ -33,7 +33,7 @@ pub async fn raft_node_task_impl<T: AsyncTransport>(
     let storage = EmbassyStorage::new();
     let timer = EmbassyTimer::new();
     let mut transport = EmbassyTransport::new();
-    let state_machine = EmbassyStateMachine::new();
+    let state_machine = EmbassyStateMachine::default();
     let mut led = LedState::new(node_id as u8);
 
     // Create peer collection

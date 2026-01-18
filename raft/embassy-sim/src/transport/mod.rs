@@ -17,6 +17,14 @@ pub mod udp;
 #[cfg(feature = "udp-transport")]
 pub mod raft_msg_serde;
 
+#[cfg(feature = "udp-transport")]
+pub mod net_config;
+
+#[cfg(feature = "udp-transport")]
+pub mod net_driver;
+
+pub mod setup;
+
 // Re-exports for convenience (suppress unused warnings - these are for external use)
 #[cfg(feature = "udp-transport")]
 #[allow(unused_imports)]

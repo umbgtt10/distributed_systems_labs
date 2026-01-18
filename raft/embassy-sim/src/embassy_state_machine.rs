@@ -34,3 +34,9 @@ impl StateMachine for EmbassyStateMachine {
         self.data.get(key).map(|s| s.as_str())
     }
 }
+
+impl Default for EmbassyStateMachine {
+    fn default() -> Self {
+        Self::new()
+    }
+}

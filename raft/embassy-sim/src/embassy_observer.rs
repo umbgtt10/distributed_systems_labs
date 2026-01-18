@@ -37,6 +37,10 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
         if self.level >= EventLevel::Essential {
             info!("Node {} became LEADER (term {})", node, term);
         }
+        // Update cluster leader tracking (non-blocking try_lock)
+        if let Ok(mut leader) = crate::cluster::CURRENT_LEADER.try_lock() {
+            *leader = Some(node);
+        }
     }
 
     fn role_changed(&mut self, node: NodeId, old: Role, new: Role, term: Term) {

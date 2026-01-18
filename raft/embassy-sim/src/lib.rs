@@ -13,6 +13,7 @@ extern crate alloc;
 #[macro_use]
 pub mod logging;
 pub mod cancellation_token;
+pub mod cluster;
 pub mod config;
 pub mod embassy_log_collection;
 pub mod embassy_map_collection;

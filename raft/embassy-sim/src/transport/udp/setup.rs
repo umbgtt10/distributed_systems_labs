@@ -3,9 +3,10 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::cancellation_token::CancellationToken;
+use crate::cluster::RaftCluster;
 use crate::info;
 use alloc::vec::Vec;
-use embassy_executor::Spawner; // Macros
+use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
 
 use crate::transport::udp::config::{self, get_node_config};
@@ -16,7 +17,7 @@ pub async fn initialize_cluster(
     spawner: Spawner,
     cancel: CancellationToken,
     observer_level: EventLevel,
-) {
+) -> RaftCluster {
     info!("Using UDP transport (simulated Ethernet)");
     info!("WireRaftMsg serialization layer: COMPLETE ✓");
 
@@ -120,19 +121,26 @@ pub async fn initialize_cluster(
         // UdpTransport now takes (node_id, outbound_sender, inbound_receiver)
         let transport_impl = UdpTransport::new(node_id_u64, outbox_sender, inbox_receiver);
 
+        // Create the node
+        let client_rx = crate::cluster::CLIENT_CHANNELS[(node_id_u64 - 1) as usize].receiver();
+        let node = crate::embassy_node::EmbassyNode::new(
+            node_id_u64,
+            transport_impl,
+            client_rx,
+            observer_level,
+        );
+
         spawner
-            .spawn(udp_raft_node_task(
-                node_id_u64,
-                transport_impl,
-                cancel.clone(),
-                observer_level,
-            ))
+            .spawn(udp_raft_node_task(node, cancel.clone()))
             .unwrap();
 
         info!("Spawned UDP node {}", node_id);
     }
 
     info!("All UDP nodes started!");
+
+    // Return cluster handle for client interaction
+    RaftCluster::new(cancel)
 }
 
 // Network stack task (runs embassy-net Runner)
@@ -147,12 +155,10 @@ async fn net_stack_task(
 // UDP Raft node task wrapper
 #[embassy_executor::task(pool_size = 5)]
 async fn udp_raft_node_task(
-    node_id: u64,
-    transport: crate::transport::udp::transport::UdpTransport,
+    node: crate::embassy_node::EmbassyNode<crate::transport::udp::transport::UdpTransport>,
     cancel: CancellationToken,
-    observer_level: EventLevel,
 ) {
-    crate::embassy_node::raft_node_task_impl(node_id, transport, cancel, observer_level).await
+    node.run(cancel).await
 }
 
 // UDP Listener Task Wrapper

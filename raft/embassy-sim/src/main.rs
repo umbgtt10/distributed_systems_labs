@@ -14,6 +14,7 @@ use panic_semihosting as _;
 #[macro_use]
 pub mod logging;
 pub mod cancellation_token;
+pub mod cluster;
 pub mod config;
 pub mod embassy_log_collection;
 pub mod embassy_map_collection;
@@ -48,15 +49,29 @@ async fn main(spawner: Spawner) {
     info!("Observer level: {:?}", observer_level);
 
     // Initialize cluster (handles all network/channel setup internally)
-    transport::setup::initialize_cluster(spawner, cancel.clone(), observer_level).await;
+    let cluster =
+        transport::setup::initialize_cluster(spawner, cancel.clone(), observer_level).await;
 
-    info!("All nodes started. Observing consensus...");
+    info!("All nodes started. Waiting for leader election...");
+
+    // Wait for consensus (leader election)
+    match cluster
+        .wait_for_leader(embassy_time::Duration::from_secs(10))
+        .await
+    {
+        Ok(leader_id) => {
+            info!("Consensus achieved! Leader elected: Node {}", leader_id);
+        }
+        Err(_) => {
+            panic!("Leader election timed out!");
+        }
+    }
 
     // Run for 30 seconds
     embassy_time::Timer::after(Duration::from_secs(30)).await;
 
     info!("30 seconds elapsed. Initiating graceful shutdown...");
-    cancel.cancel();
+    cluster.shutdown();
 
     // Give tasks time to finish
     embassy_time::Timer::after(Duration::from_millis(500)).await;

@@ -71,6 +71,7 @@ pub async fn raft_node_task_impl<T: AsyncTransport>(
         let expired_timers = timer_service.check_expired();
 
         for timer_kind in expired_timers.iter() {
+            info!("Node {} timer fired: {:?}", node_id, timer_kind);
             node.on_event(Event::TimerFired(timer_kind));
             led.update(node.role());
         }

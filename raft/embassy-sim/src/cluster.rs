@@ -21,18 +21,28 @@ pub(crate) static CLIENT_CHANNELS: [Channel<CriticalSectionRawMutex, ClientReque
     Channel::new(),
 ];
 
+pub(crate) static CLIENT_RESPONSE_CHANNEL: Channel<
+    CriticalSectionRawMutex,
+    Result<(), ClusterError>,
+    1,
+> = Channel::new();
+
 pub(crate) static CURRENT_LEADER: Mutex<CriticalSectionRawMutex, Option<NodeId>> = Mutex::new(None);
 
 /// Client request to Raft cluster
+#[derive(Clone)]
 pub enum ClientRequest {
     /// Write command to replicated log
-    Write { payload: String },
+    Write {
+        payload: String,
+        response_tx: Sender<'static, CriticalSectionRawMutex, Result<(), ClusterError>, 1>,
+    },
     /// Get current leader (for client redirection)
     GetLeader,
 }
 
 /// Error types for cluster operations
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum ClusterError {
     /// No leader currently elected
     NoLeader,
@@ -73,16 +83,37 @@ impl RaftCluster {
     /// Submit a write command to the cluster
     /// Sends to a random node - Raft protocol handles forwarding to leader
     pub async fn submit_command(&self, payload: String) -> Result<(), ClusterError> {
-        let req = ClientRequest::Write { payload };
+        // Clear any previous responses
+        while CLIENT_RESPONSE_CHANNEL.try_receive().is_ok() {}
 
+        let req = ClientRequest::Write {
+            payload,
+            response_tx: CLIENT_RESPONSE_CHANNEL.sender(),
+        };
+
+        let mut sent = false;
+        // Try to send to a random node (or all of them)
+        // Since we don't have random here easily, just iterate.
+        // It's effectively "try any available node".
         for channel in self.client_channels.iter() {
             if channel.try_send(req.clone()).is_ok() {
-                return Ok(());
+                sent = true;
+                break;
             }
         }
 
-        // All channels full
-        Err(ClusterError::ChannelFull)
+        if !sent {
+            return Err(ClusterError::ChannelFull);
+        }
+
+        // Wait for response
+        // In a real system, we'd use IDs to match response to request
+        match embassy_time::with_timeout(Duration::from_secs(10), CLIENT_RESPONSE_CHANNEL.receive())
+            .await
+        {
+            Ok(result) => result,
+            Err(_) => Err(ClusterError::Timeout),
+        }
     }
 
     /// Wait for a leader to be elected
@@ -105,17 +136,5 @@ impl RaftCluster {
     /// Initiate graceful shutdown
     pub fn shutdown(&self) {
         self.cancel.cancel();
-    }
-}
-
-// ClientRequest needs to be cloneable for broadcast
-impl Clone for ClientRequest {
-    fn clone(&self) -> Self {
-        match self {
-            ClientRequest::Write { payload } => ClientRequest::Write {
-                payload: payload.clone(),
-            },
-            ClientRequest::GetLeader => ClientRequest::GetLeader,
-        }
     }
 }

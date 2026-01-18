@@ -46,6 +46,11 @@ where
     replication: LogReplicationManager<M>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClientError {
+    NotLeader,
+}
+
 impl<T, S, P, SM, C, L, M, TS, O> RaftNode<T, S, P, SM, C, L, M, TS, O>
 where
     P: Clone,
@@ -137,7 +142,9 @@ where
         match event {
             Event::TimerFired(kind) => self.handle_timer(kind),
             Event::Message { from, msg } => self.handle_message(from, msg),
-            Event::ClientCommand(payload) => self.handle_client_command(payload),
+            Event::ClientCommand(payload) => {
+                let _ = self.submit_client_command(payload);
+            }
         }
     }
 
@@ -242,6 +249,7 @@ where
                 }
 
                 if self.role == NodeState::Leader && term == self.current_term {
+                    let old_commit_index = self.replication.commit_index();
                     self.replication.handle_append_entries_response(
                         from,
                         success,
@@ -249,14 +257,19 @@ where
                         &self.storage,
                         &mut self.state_machine,
                     );
+                    let new_commit_index = self.replication.commit_index();
+                    if new_commit_index > old_commit_index {
+                        self.observer
+                            .commit_advanced(self.id, old_commit_index, new_commit_index);
+                    }
                 }
             }
         }
     }
 
-    fn handle_client_command(&mut self, payload: P) {
+    pub fn submit_client_command(&mut self, payload: P) -> Result<LogIndex, ClientError> {
         if self.role != NodeState::Leader {
-            return;
+            return Err(ClientError::NotLeader);
         }
 
         let entry = LogEntry {
@@ -264,8 +277,15 @@ where
             payload,
         };
         self.storage.append_entries(&[entry]);
+        let index = self.storage.last_log_index();
 
         self.send_append_entries_to_followers();
+
+        Ok(index)
+    }
+
+    pub fn is_committed(&self, index: LogIndex) -> bool {
+        index <= self.replication.commit_index()
     }
 
     // ============================================================

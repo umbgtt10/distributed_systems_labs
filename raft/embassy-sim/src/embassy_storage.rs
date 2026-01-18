@@ -67,13 +67,21 @@ impl Storage for EmbassyStorage {
     }
 
     fn get_entries(&self, start: LogIndex, end: LogIndex) -> Self::LogEntryCollection {
-        if start == 0 || start > end || end > self.log.len() as LogIndex {
+        if start == 0 || start >= end {
             return EmbassyLogEntryCollection::new(&[]);
         }
 
         let start_idx = (start - 1) as usize;
-        let end_idx = end as usize;
-        let slice = &self.log[start_idx..end_idx];
+        let end_idx = (end - 1) as usize;
+
+        if start_idx >= self.log.len() {
+            return EmbassyLogEntryCollection::new(&[]);
+        }
+
+        // Clamp to available entries to prevent out of bounds
+        let actual_end_idx = end_idx.min(self.log.len());
+
+        let slice = &self.log[start_idx..actual_end_idx];
         EmbassyLogEntryCollection::new(slice)
     }
 

@@ -67,10 +67,22 @@ async fn main(spawner: Spawner) {
         }
     }
 
-    // Run for 30 seconds
-    embassy_time::Timer::after(Duration::from_secs(30)).await;
+    // Submit test commands
+    info!("Submitting test commands...");
+    for i in 1..=3 {
+        let command = alloc::format!("SET key{} value{}", i, i);
+        info!("Submitting: {}", command);
+        match cluster.submit_command(command).await {
+            Ok(_) => info!("Command {} committed successfully!", i),
+            Err(e) => info!("Command {} failed: {:?}", i, e),
+        }
+    }
+    info!("All commands processed!");
 
-    info!("30 seconds elapsed. Initiating graceful shutdown...");
+    // Run for additional time to observe replication
+    embassy_time::Timer::after(Duration::from_secs(5)).await;
+
+    info!("5 seconds elapsed. Initiating graceful shutdown...");
     cluster.shutdown();
 
     // Give tasks time to finish

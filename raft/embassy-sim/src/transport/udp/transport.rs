@@ -19,7 +19,7 @@ use raft_core::types::NodeId;
 
 const BASE_PORT: u16 = 9000;
 const MAX_PACKET_SIZE: usize = 4096;
-const CHANNEL_SIZE: usize = 16;
+const CHANNEL_SIZE: usize = 64;
 
 pub type RaftChannel = Channel<
     CriticalSectionRawMutex,

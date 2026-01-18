@@ -2,14 +2,15 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use alloc::collections::BTreeMap;
 use alloc::string::String;
 use embassy_futures::select::{select4, Either4};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Receiver;
+use embassy_sync::channel::{Receiver, Sender};
 use embassy_time::Duration;
 
 use crate::cancellation_token::CancellationToken;
-use crate::cluster::ClientRequest;
+use crate::cluster::{ClientRequest, ClusterError};
 use crate::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::embassy_map_collection::EmbassyMapCollection;
 use crate::embassy_node_collection::EmbassyNodeCollection;
@@ -26,10 +27,10 @@ use raft_core::event::Event;
 use raft_core::log_replication_manager::LogReplicationManager;
 use raft_core::node_collection::NodeCollection;
 use raft_core::observer::EventLevel;
-use raft_core::raft_node::RaftNode;
+use raft_core::raft_node::{ClientError, RaftNode};
 use raft_core::raft_node_builder::RaftNodeBuilder;
 use raft_core::timer_service::TimerService;
-use raft_core::types::NodeId;
+use raft_core::types::{LogIndex, NodeId};
 
 /// Embassy Raft node - encapsulates all node state and behavior
 pub struct EmbassyNode<T: AsyncTransport> {
@@ -49,6 +50,8 @@ pub struct EmbassyNode<T: AsyncTransport> {
     async_transport: T,
     client_rx: Receiver<'static, CriticalSectionRawMutex, ClientRequest, 4>,
     led: LedState,
+    pending_commands:
+        BTreeMap<LogIndex, Sender<'static, CriticalSectionRawMutex, Result<(), ClusterError>, 1>>,
 }
 
 impl<T: AsyncTransport> EmbassyNode<T> {
@@ -99,6 +102,7 @@ impl<T: AsyncTransport> EmbassyNode<T> {
             async_transport,
             client_rx,
             led,
+            pending_commands: BTreeMap::new(),
         }
     }
 
@@ -153,6 +157,9 @@ impl<T: AsyncTransport> EmbassyNode<T> {
 
             // After any event, drain outbox and send messages
             self.drain_and_send_messages().await;
+
+            // Check for committed requests
+            self.process_committed_requests().await;
         }
 
         info!("Node {} shutdown complete", self.node_id);
@@ -165,13 +172,62 @@ impl<T: AsyncTransport> EmbassyNode<T> {
         }
     }
 
+    /// Process requests that have been committed
+    async fn process_committed_requests(&mut self) {
+        let commit_index = self.raft_node.commit_index();
+        let mut completed = alloc::vec::Vec::new();
+
+        // Identify completed requests
+        for (index, _) in self.pending_commands.iter() {
+            if *index <= commit_index {
+                completed.push(*index);
+            } else {
+                // Since BTreeMap is ordered, we can stop early
+                break;
+            }
+        }
+
+        // Notify and remove
+        for index in completed {
+            if let Some(tx) = self.pending_commands.remove(&index) {
+                // Ignore result if receiver dropped
+                let _ = tx.try_send(Ok(()));
+            }
+        }
+    }
+
     /// Handle client request
     async fn handle_client_request(&mut self, request: ClientRequest) {
         match request {
-            ClientRequest::Write { payload } => {
+            ClientRequest::Write {
+                payload,
+                response_tx,
+            } => {
                 info!("Node {} received client command: {}", self.node_id, payload);
-                // TODO: Forward to RaftNode for processing
-                // Will need to add client command handling to raft_core
+
+                match self.raft_node.submit_client_command(payload.clone()) {
+                    Ok(index) => {
+                        self.pending_commands.insert(index, response_tx);
+                    }
+                    Err(ClientError::NotLeader) => {
+                        // Forwarding logic
+                        // If we know the leader, forward logic
+                        let leader_id = *crate::cluster::CURRENT_LEADER.lock().await;
+
+                        if let Some(leader) = leader_id {
+                            info!("Node {} redirecting to Leader {}", self.node_id, leader);
+                            let _ = crate::cluster::CLIENT_CHANNELS[leader as usize - 1].try_send(
+                                ClientRequest::Write {
+                                    payload,
+                                    response_tx,
+                                },
+                            );
+                        } else {
+                            // If we don't know the leader, inform client of failure
+                            let _ = response_tx.try_send(Err(ClusterError::NoLeader));
+                        }
+                    }
+                }
             }
             ClientRequest::GetLeader => {
                 // TODO: Respond with current leader

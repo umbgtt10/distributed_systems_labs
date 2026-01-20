@@ -24,6 +24,7 @@ pub mod embassy_state_machine;
 pub mod embassy_storage;
 pub mod embassy_timer;
 pub mod heap;
+pub mod heapless_chunk_collection;
 pub mod led_state;
 pub mod time_driver;
 pub mod transport;

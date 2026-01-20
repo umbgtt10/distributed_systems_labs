@@ -7,7 +7,6 @@ use crate::{
     log_entry_collection::LogEntryCollection,
     types::{LogIndex, NodeId, Term},
 };
-use core::marker::PhantomData;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum RaftMsg<P: Clone, L: LogEntryCollection<Payload = P> + Clone, C: ChunkCollection + Clone> {
@@ -32,7 +31,6 @@ pub enum RaftMsg<P: Clone, L: LogEntryCollection<Payload = P> + Clone, C: ChunkC
         term: Term,
         success: bool,
         match_index: LogIndex,
-        _phantom: PhantomData<C>,
     },
     InstallSnapshot {
         term: Term,

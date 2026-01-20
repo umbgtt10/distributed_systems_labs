@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use heapless::index_map::FnvIndexMap;
 use heapless::Vec;
@@ -29,7 +30,7 @@ pub struct EmbassySnapshotData {
 }
 
 impl raft_core::snapshot::SnapshotData for EmbassySnapshotData {
-    type Chunk = Vec<u8, 512>;
+    type Chunk = HeaplessChunkVec<512>;
 
     fn len(&self) -> usize {
         self.data.len()
@@ -47,7 +48,7 @@ impl raft_core::snapshot::SnapshotData for EmbassySnapshotData {
             let _ = chunk.push(self.data[i]);
         }
 
-        Some(chunk)
+        Some(HeaplessChunkVec(chunk))
     }
 }
 

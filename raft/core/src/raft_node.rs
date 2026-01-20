@@ -339,7 +339,6 @@ where
                 term,
                 success,
                 match_index,
-                _phantom: _,
             } => {
                 if term > self.current_term {
                     self.step_down(term);

@@ -181,7 +181,6 @@ where
             term: *current_term,
             success,
             match_index: storage.last_log_index(),
-            _phantom: core::marker::PhantomData,
         }
     }
 

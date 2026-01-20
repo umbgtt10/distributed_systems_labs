@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use raft_core::log_entry_collection::LogEntryCollection;
 use raft_core::observer::{EventLevel, Observer, Role, TimerKind};
 use raft_core::raft_messages::RaftMsg;
@@ -28,6 +29,7 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> EmbassyObserver<P, L>
 impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyObserver<P, L> {
     type Payload = P;
     type LogEntries = L;
+    type ChunkCollection = HeaplessChunkVec<512>;
 
     fn min_level(&self) -> EventLevel {
         self.level
@@ -191,7 +193,7 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
         &mut self,
         from: NodeId,
         to: NodeId,
-        _msg: &RaftMsg<Self::Payload, Self::LogEntries>,
+        _msg: &RaftMsg<Self::Payload, Self::LogEntries, Self::ChunkCollection>,
     ) {
         if self.level >= EventLevel::Trace {
             info!("Node {} -> Node {}: message sent", from, to);
@@ -202,7 +204,7 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
         &mut self,
         to: NodeId,
         from: NodeId,
-        _msg: &RaftMsg<Self::Payload, Self::LogEntries>,
+        _msg: &RaftMsg<Self::Payload, Self::LogEntries, Self::ChunkCollection>,
     ) {
         if self.level >= EventLevel::Trace {
             info!("Node {} <- Node {}: message received", to, from);

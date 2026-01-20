@@ -4,8 +4,10 @@
 
 use crate::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::embassy_state_machine::EmbassySnapshotData;
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use heapless::Vec;
+use raft_core::chunk_collection::ChunkCollection;
 use raft_core::log_entry::LogEntry;
 use raft_core::log_entry_collection::LogEntryCollection;
 use raft_core::snapshot::{SnapshotBuilder, SnapshotData};
@@ -42,7 +44,7 @@ pub struct EmbassySnapshotBuilder {
 
 impl raft_core::snapshot::SnapshotBuilder for EmbassySnapshotBuilder {
     type Output = EmbassySnapshotData;
-    type ChunkInput = Vec<u8, 512>;
+    type ChunkInput = HeaplessChunkVec<512>;
 
     fn new() -> Self {
         EmbassySnapshotBuilder { data: Vec::new() }
@@ -54,7 +56,7 @@ impl raft_core::snapshot::SnapshotBuilder for EmbassySnapshotBuilder {
         chunk: Self::ChunkInput,
     ) -> Result<(), raft_core::snapshot::SnapshotBuildError> {
         // Append chunk data to our buffer
-        for byte in chunk.iter() {
+        for byte in chunk.as_slice() {
             self.data
                 .push(*byte)
                 .map_err(|_| raft_core::snapshot::SnapshotBuildError::OutOfBounds)?;
@@ -75,7 +77,7 @@ impl Storage for EmbassyStorage {
     type Payload = String;
     type LogEntryCollection = EmbassyLogEntryCollection;
     type SnapshotData = EmbassySnapshotData;
-    type SnapshotChunk = Vec<u8, 512>;
+    type SnapshotChunk = HeaplessChunkVec<512>;
     type SnapshotBuilder = EmbassySnapshotBuilder;
 
     fn current_term(&self) -> Term {
@@ -194,6 +196,38 @@ impl Storage for EmbassyStorage {
 
     fn begin_snapshot_transfer(&mut self) -> Self::SnapshotBuilder {
         EmbassySnapshotBuilder::new()
+    }
+
+    fn apply_snapshot_chunk(
+        &mut self,
+        offset: u64,
+        chunk: Self::SnapshotChunk,
+        done: bool,
+        last_included_index: LogIndex,
+        last_included_term: Term,
+    ) -> Result<(), raft_core::snapshot::SnapshotError> {
+        // For single-chunk transfers (embassy typical case)
+        if offset == 0 && done {
+            // Convert HeaplessChunkVec to Vec<u8, 512>
+            let mut data = Vec::new();
+            for byte in chunk.as_slice() {
+                data.push(*byte)
+                    .map_err(|_| raft_core::snapshot::SnapshotError::CorruptData)?;
+            }
+            let snapshot_data = EmbassySnapshotData { data };
+            let snapshot = raft_core::snapshot::Snapshot {
+                metadata: raft_core::snapshot::SnapshotMetadata {
+                    last_included_index,
+                    last_included_term,
+                },
+                data: snapshot_data,
+            };
+            self.snapshot = Some(snapshot);
+            Ok(())
+        } else {
+            // Multi-chunk not supported in this simple implementation
+            Err(raft_core::snapshot::SnapshotError::CorruptData)
+        }
     }
 
     fn finalize_snapshot(

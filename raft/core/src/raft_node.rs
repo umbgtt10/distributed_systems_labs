@@ -538,7 +538,7 @@ where
         for peer in ids.iter() {
             let msg = self
                 .replication
-                .get_append_entries_for_peer(peer, &self.storage);
+                .get_append_entries_for_peer(peer, self.id, &self.storage);
             self.send(peer, msg);
         }
     }

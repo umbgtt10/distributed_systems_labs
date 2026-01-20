@@ -51,15 +51,11 @@ where
         }
     }
 
-    // REMOVE THIS!!!!!!!!
-    pub fn set_next_index_for_testing(&mut self, peer: NodeId, index: LogIndex) {
-        self.next_index.insert(peer, index);
-    }
-
     /// Get message to send to a follower (AppendEntries or InstallSnapshot)
     pub fn get_append_entries_for_peer<P, L, C, S>(
         &self,
         peer: NodeId,
+        leader_id: NodeId,
         storage: &S,
     ) -> RaftMsg<P, L, C>
     where
@@ -79,7 +75,7 @@ where
                 if let Some(metadata) = storage.snapshot_metadata() {
                     return RaftMsg::InstallSnapshot {
                         term: current_term,
-                        leader_id: 0, // TODO: Pass leader_id as parameter
+                        leader_id,
                         last_included_index: metadata.last_included_index,
                         last_included_term: metadata.last_included_term,
                         offset: chunk.offset as u64,

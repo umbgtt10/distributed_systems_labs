@@ -1,4 +1,4 @@
-﻿// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
@@ -770,7 +770,7 @@ fn test_liveness_get_append_entries_with_compacted_snapshot_point() {
     // Create snapshot at index 10, term 2
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -848,7 +848,7 @@ fn test_safety_get_append_entries_before_snapshot_point() {
     // Create snapshot at index 10
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -923,7 +923,7 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
 
     // Create snapshot at index 15
     for i in 1..=15 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -1005,7 +1005,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
 
     // Create snapshot at index 10, term 2
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -1086,7 +1086,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
 
     // Create snapshot at index 10, term 2
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -1159,7 +1159,7 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
 
     // Create snapshot at index 10, term 2
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -1244,7 +1244,7 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
 
     // Create snapshot at index 10, term 1
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -1315,7 +1315,7 @@ fn test_liveness_leader_detects_follower_needs_snapshot() {
 
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -1333,12 +1333,20 @@ fn test_liveness_leader_detects_follower_needs_snapshot() {
     let peers = [0, 1];
     replication.initialize_leader_state(peers.iter().copied(), &storage);
 
-    // Follower is far behind (next_index = 5, but first_log_index = 11)
-    // match index set by initialize_leader_state
-    replication.set_next_index_for_testing(0, 5);
+    // Simulate follower failures to decrement next_index below first_log_index
+    // Leader starts with next_index[0] = 21, needs to get it to < 11
+    for _ in 0..15 {
+        replication.handle_append_entries_response::<String, InMemoryLogEntryCollection, InMemoryStorage, InMemoryStateMachine>(
+            0,     // peer
+            false, // failure
+            0,     // match_index (ignored on failure)
+            &storage,
+            &mut InMemoryStateMachine::new(),
+        );
+    }
 
     // Get message for follower - should be InstallSnapshot
-    let message = replication.get_append_entries_for_peer(0, &storage);
+    let message = replication.get_append_entries_for_peer(0, 0, &storage);
 
     match message {
         RaftMsg::InstallSnapshot {
@@ -1384,7 +1392,7 @@ fn test_liveness_follower_installs_snapshot_successfully() {
     // Leader sends snapshot covering entries 1-10
     let mut leader_state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        leader_state_machine.apply(&format!("cmd{}", i));
+        leader_state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = leader_state_machine.create_snapshot();
     let snapshot_bytes = snapshot_data.to_bytes().to_vec();
@@ -1420,7 +1428,7 @@ fn test_liveness_follower_installs_snapshot_successfully() {
     assert_eq!(storage.first_log_index(), 11);
 
     // Verify state machine was restored
-    assert_eq!(state_machine.get("cmd10"), Some("cmd10"));
+    assert_eq!(state_machine.get("cmd10"), Some("value10"));
 }
 
 #[test]
@@ -1436,7 +1444,7 @@ fn test_safety_follower_rejects_stale_snapshot() {
 
     // Follower already has snapshot at index 15
     for i in 1..=15 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let current_snapshot_data = state_machine.create_snapshot();
 
@@ -1453,7 +1461,7 @@ fn test_safety_follower_rejects_stale_snapshot() {
     // Leader tries to send older snapshot (index 10)
     let mut old_state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        old_state_machine.apply(&format!("cmd{}", i));
+        old_state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let old_snapshot_data = old_state_machine.create_snapshot();
     let snapshot_bytes = old_snapshot_data.to_bytes().to_vec();
@@ -1499,7 +1507,7 @@ fn test_liveness_snapshot_transfer_with_chunks() {
     // Create snapshot data
     let mut leader_state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        leader_state_machine.apply(&format!("cmd{}", i));
+        leader_state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = leader_state_machine.create_snapshot();
     let snapshot_bytes = snapshot_data.to_bytes().to_vec();
@@ -1585,7 +1593,7 @@ fn test_liveness_snapshot_transfer_with_chunks() {
     assert_eq!(metadata.last_included_term, 2);
 
     // Verify state machine was restored
-    assert_eq!(state_machine.get("cmd10"), Some("cmd10"));
+    assert_eq!(state_machine.get("cmd10"), Some("value10"));
 }
 
 #[test]
@@ -1602,7 +1610,7 @@ fn test_liveness_replication_resumes_after_snapshot_install() {
     // Install snapshot covering entries 1-10
     let mut leader_state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        leader_state_machine.apply(&format!("cmd{}", i));
+        leader_state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = leader_state_machine.create_snapshot();
     let snapshot_bytes = snapshot_data.to_bytes().to_vec();
@@ -1677,7 +1685,7 @@ fn test_safety_follower_rejects_snapshot_from_old_term() {
     // Leader sends snapshot from old term 2
     let mut old_state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        old_state_machine.apply(&format!("cmd{}", i));
+        old_state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = old_state_machine.create_snapshot();
     let snapshot_bytes = snapshot_data.to_bytes().to_vec();
@@ -1727,7 +1735,7 @@ fn test_liveness_leader_updates_next_index_after_snapshot_success() {
 
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
-        state_machine.apply(&format!("cmd{}", i));
+        state_machine.apply(&format!("SET cmd{}=value{}", i, i));
     }
     let snapshot_data = state_machine.create_snapshot();
 
@@ -1755,7 +1763,7 @@ fn test_liveness_leader_updates_next_index_after_snapshot_success() {
     );
 
     // Verify next_index updated to snapshot point + 1
-    let next_msg = replication.get_append_entries_for_peer(0, &storage);
+    let next_msg = replication.get_append_entries_for_peer(0, 0, &storage);
     match next_msg {
         RaftMsg::AppendEntries { prev_log_index, .. } => {
             assert_eq!(

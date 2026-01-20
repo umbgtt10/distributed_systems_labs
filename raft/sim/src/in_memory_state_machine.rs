@@ -2,9 +2,10 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use std::collections::HashMap;
-
+use crate::snapshot_types::SimSnapshotData;
+use raft_core::snapshot::SnapshotError;
 use raft_core::state_machine::StateMachine;
+use std::collections::HashMap;
 
 #[derive(Clone)]
 pub struct InMemoryStateMachine {
@@ -27,6 +28,7 @@ impl Default for InMemoryStateMachine {
 
 impl StateMachine for InMemoryStateMachine {
     type Payload = String;
+    type SnapshotData = SimSnapshotData;
 
     fn apply(&mut self, payload: &Self::Payload) {
         // Parse "SET key=value" commands
@@ -39,5 +41,17 @@ impl StateMachine for InMemoryStateMachine {
 
     fn get(&self, key: &str) -> Option<&str> {
         self.data.get(key).map(|s| s.as_str())
+    }
+
+    fn create_snapshot(&self) -> Self::SnapshotData {
+        // Serialize HashMap to JSON (simple and readable for testing)
+        let vec = serde_json::to_vec(&self.data).unwrap_or_default();
+        SimSnapshotData::from_vec(vec)
+    }
+
+    fn restore_from_snapshot(&mut self, data: &Self::SnapshotData) -> Result<(), SnapshotError> {
+        self.data = serde_json::from_slice(data.as_slice())
+            .map_err(|_| SnapshotError::DeserializationFailed)?;
+        Ok(())
     }
 }

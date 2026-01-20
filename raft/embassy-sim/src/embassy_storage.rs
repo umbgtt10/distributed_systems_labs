@@ -30,9 +30,35 @@ impl EmbassyStorage {
     }
 }
 
+// Dummy types for snapshot support (not yet implemented)
+pub struct DummySnapshotData;
+pub struct DummySnapshotBuilder;
+
+impl raft_core::snapshot::SnapshotData for DummySnapshotData {
+    type Chunk = ();
+    fn len(&self) -> usize { 0 }
+    fn chunk_at(&self, _: usize, _: usize) -> Option<Self::Chunk> { None }
+}
+
+impl raft_core::snapshot::SnapshotBuilder for DummySnapshotBuilder {
+    type Output = DummySnapshotData;
+    type ChunkInput = ();
+    fn new() -> Self { DummySnapshotBuilder }
+    fn add_chunk(&mut self, _: usize, _: Self::ChunkInput) -> Result<(), raft_core::snapshot::SnapshotBuildError> { Ok(()) }
+    fn is_complete(&self, _: usize) -> bool { true }
+    fn build(self) -> Result<Self::Output, raft_core::snapshot::SnapshotBuildError> { Ok(DummySnapshotData) }
+}
+
+impl Clone for DummySnapshotData {
+    fn clone(&self) -> Self { DummySnapshotData }
+}
+
 impl Storage for EmbassyStorage {
     type Payload = String;
     type LogEntryCollection = EmbassyLogEntryCollection;
+    type SnapshotData = DummySnapshotData;
+    type SnapshotChunk = ();
+    type SnapshotBuilder = DummySnapshotBuilder;
 
     fn current_term(&self) -> Term {
         self.current_term
@@ -93,6 +119,48 @@ impl Storage for EmbassyStorage {
 
     fn truncate_after(&mut self, index: LogIndex) {
         self.log.truncate(index as usize);
+    }
+
+    // === Snapshot Methods (Stubs) ===
+
+    fn save_snapshot(&mut self, _snapshot: raft_core::snapshot::Snapshot<Self::SnapshotData>) {
+        todo!("Snapshot support not yet implemented")
+    }
+
+    fn load_snapshot(&self) -> Option<raft_core::snapshot::Snapshot<Self::SnapshotData>> {
+        None // No snapshots yet
+    }
+
+    fn snapshot_metadata(&self) -> Option<raft_core::snapshot::SnapshotMetadata> {
+        None // No snapshots yet
+    }
+
+    fn get_snapshot_chunk(
+        &self,
+        _offset: usize,
+        _max_size: usize,
+    ) -> Option<raft_core::snapshot::SnapshotChunk<Self::SnapshotData>> {
+        None // No snapshots yet
+    }
+
+    fn begin_snapshot_transfer(&mut self) -> Self::SnapshotBuilder {
+        DummySnapshotBuilder
+    }
+
+    fn finalize_snapshot(
+        &mut self,
+        _builder: Self::SnapshotBuilder,
+        _metadata: raft_core::snapshot::SnapshotMetadata,
+    ) -> Result<(), raft_core::snapshot::SnapshotError> {
+        todo!("Snapshot support not yet implemented")
+    }
+
+    fn discard_entries_before(&mut self, _index: LogIndex) {
+        // No-op: compaction not yet implemented
+    }
+
+    fn first_log_index(&self) -> LogIndex {
+        1 // Always start at 1 (no compaction yet)
     }
 }
 

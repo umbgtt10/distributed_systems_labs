@@ -12,5 +12,6 @@ pub mod message_broker;
 pub mod mocked_timer_service;
 pub mod no_action_timer;
 pub mod null_observer;
+pub mod snapshot_types;
 pub mod timefull_test_cluster;
 pub mod timeless_test_cluster;

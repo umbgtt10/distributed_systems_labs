@@ -4,6 +4,8 @@
 
 #![no_std]
 
+extern crate alloc;
+
 pub mod election_manager;
 pub mod event;
 pub mod log_entry;
@@ -16,6 +18,7 @@ pub mod observer;
 pub mod raft_messages;
 pub mod raft_node;
 pub mod raft_node_builder;
+pub mod snapshot;
 pub mod state_machine;
 pub mod storage;
 pub mod timer_service;

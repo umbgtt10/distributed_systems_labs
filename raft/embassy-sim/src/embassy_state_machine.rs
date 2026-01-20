@@ -20,8 +20,22 @@ impl EmbassyStateMachine {
     }
 }
 
+// Dummy snapshot data (not yet implemented)
+pub struct DummySnapshotData;
+
+impl raft_core::snapshot::SnapshotData for DummySnapshotData {
+    type Chunk = ();
+    fn len(&self) -> usize { 0 }
+    fn chunk_at(&self, _: usize, _: usize) -> Option<Self::Chunk> { None }
+}
+
+impl Clone for DummySnapshotData {
+    fn clone(&self) -> Self { DummySnapshotData }
+}
+
 impl StateMachine for EmbassyStateMachine {
     type Payload = String;
+    type SnapshotData = DummySnapshotData;
 
     fn apply(&mut self, payload: &Self::Payload) {
         // Simple format: "key=value"
@@ -32,6 +46,16 @@ impl StateMachine for EmbassyStateMachine {
 
     fn get(&self, key: &str) -> Option<&str> {
         self.data.get(key).map(|s| s.as_str())
+    }
+
+    // === Snapshot Methods (Stubs) ===
+
+    fn create_snapshot(&self) -> Self::SnapshotData {
+        todo!("Snapshot support not yet implemented")
+    }
+
+    fn restore_from_snapshot(&mut self, _data: &Self::SnapshotData) -> Result<(), raft_core::snapshot::SnapshotError> {
+        todo!("Snapshot support not yet implemented")
     }
 }
 

@@ -155,12 +155,12 @@ pub async fn run_udp_sender(
 
         let target_addr = peer_addrs[(to - 1) as usize];
 
-        // crate::info!("Node {} sending to {} via UDP", node_id, to);
+        info!("Node {} sending to {} via UDP", node_id, to);
 
         if let Err(e) = socket.send_to(&bytes, target_addr).await {
             info!("Node {} failed to send UDP packet: {:?}", node_id, e);
         } else {
-            // crate::info!("Node {} sent {} bytes to {}", node_id, bytes.len(), to);
+            info!("Node {} sent {} bytes to {}", node_id, bytes.len(), to);
         }
     }
 }
@@ -197,33 +197,41 @@ pub async fn run_udp_listener(
 
         match socket.recv_from(&mut buf).await {
             Ok((len, _from_addr)) => {
+                info!("Node {} received {} bytes", node_id, len);
+                
                 // Deserialize envelope
                 let envelope: Envelope = match postcard::from_bytes(&buf[..len]) {
                     Ok(env) => env,
-                    Err(_) => {
-                        info!("Node {} failed to deserialize envelope", node_id);
+                    Err(e) => {
+                        info!("Node {} failed to deserialize envelope: {:?}", node_id, e);
                         continue;
                     }
                 };
 
+                info!("Node {} got envelope from {}", node_id, envelope.from);
+
                 // Deserialize wire message
                 let wire_msg: WireRaftMsg = match postcard::from_bytes(&envelope.message_bytes) {
                     Ok(msg) => msg,
-                    Err(_) => {
-                        info!("Node {} failed to deserialize wire message", node_id);
+                    Err(e) => {
+                        info!("Node {} failed to deserialize wire message: {:?}", node_id, e);
                         continue;
                     }
                 };
+
+                info!("Node {} deserialized wire message", node_id);
 
                 // Convert to RaftMsg
                 let message: RaftMsg<String, EmbassyLogEntryCollection> = match wire_msg.try_into()
                 {
                     Ok(msg) => msg,
-                    Err(_) => {
-                        info!("Node {} failed to convert wire message", node_id);
+                    Err(e) => {
+                        info!("Node {} failed to convert wire message: {:?}", node_id, e);
                         continue;
                     }
                 };
+
+                info!("Node {} converted to RaftMsg, sending to channel", node_id);
 
                 // Push to channel (drop if full)
                 if sender.try_send((envelope.from, message)).is_err() {

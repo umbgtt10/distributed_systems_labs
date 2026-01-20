@@ -5,7 +5,8 @@
 use embassy_time::{Duration, Instant};
 use raft_core::timer_service::{ExpiredTimers, TimerKind, TimerService};
 
-const ELECTION_TIMEOUT_MS: u64 = 300;
+const ELECTION_TIMEOUT_MIN_MS: u64 = 300;
+const ELECTION_TIMEOUT_MAX_MS: u64 = 600;
 const HEARTBEAT_TIMEOUT_MS: u64 = 100;
 
 /// Embassy-based timer implementation for Raft
@@ -21,11 +22,20 @@ impl EmbassyTimer {
             heartbeat_deadline: None,
         }
     }
+
+    /// Generate random election timeout between MIN and MAX
+    fn random_election_timeout(&self) -> Duration {
+        // Use embassy_time's timer tick as a simple entropy source
+        let now_ticks = Instant::now().as_ticks();
+        let range = ELECTION_TIMEOUT_MAX_MS - ELECTION_TIMEOUT_MIN_MS;
+        let offset = (now_ticks as u64) % (range + 1);
+        Duration::from_millis(ELECTION_TIMEOUT_MIN_MS + offset)
+    }
 }
 
 impl TimerService for EmbassyTimer {
     fn reset_election_timer(&mut self) {
-        self.election_deadline = Some(Instant::now() + Duration::from_millis(ELECTION_TIMEOUT_MS));
+        self.election_deadline = Some(Instant::now() + self.random_election_timeout());
     }
 
     fn reset_heartbeat_timer(&mut self) {

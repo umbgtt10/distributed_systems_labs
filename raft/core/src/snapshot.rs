@@ -133,4 +133,6 @@ pub enum SnapshotError {
     CorruptData,
     IncompatibleVersion,
     DeserializationFailed,
+    NoEntriesToSnapshot,
+    EntryNotFound,
 }

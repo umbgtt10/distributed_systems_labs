@@ -34,11 +34,16 @@ pub type TestNode = RaftNode<
 
 pub struct TimelessTestCluster {
     nodes: IndexMap<NodeId, TestNode>,
-    message_broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection, InMemoryChunkCollection>>>,
+    message_broker:
+        Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection, InMemoryChunkCollection>>>,
     message_log: Vec<(
         NodeId,
         NodeId,
-        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>,
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
     )>,
     partition_groups: Option<(Vec<NodeId>, Vec<NodeId>)>,
     snapshot_threshold: u64,
@@ -188,7 +193,13 @@ impl TimelessTestCluster {
     pub fn get_messages(
         &self,
         recipient: NodeId,
-    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>> {
+    ) -> Vec<
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
+    > {
         self.message_log
             .iter()
             .filter(|(_, to, _)| *to == recipient)
@@ -202,7 +213,11 @@ impl TimelessTestCluster {
     ) -> &[(
         NodeId,
         NodeId,
-        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>,
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
     )] {
         &self.message_log
     }
@@ -216,7 +231,13 @@ impl TimelessTestCluster {
         &self,
         from: NodeId,
         to: NodeId,
-    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>> {
+    ) -> Vec<
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
+    > {
         self.message_log
             .iter()
             .filter(|(f, t, _)| *f == from && *t == to)
@@ -244,6 +265,12 @@ impl TimelessTestCluster {
     /// Remove a node from the cluster
     pub fn remove_node(&mut self, id: NodeId) {
         self.nodes.swap_remove(&id);
+    }
+
+    /// Reconnect a node to the cluster by updating peer lists
+    pub fn reconnect_node(&mut self, _id: NodeId) {
+        // Simply reconnect peers - this will update all nodes' peer lists
+        self.connect_peers();
     }
 
     /// Partition the network into two groups

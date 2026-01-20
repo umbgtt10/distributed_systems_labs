@@ -316,6 +316,14 @@ where
         self.commit_index
     }
 
+    pub fn last_applied(&self) -> LogIndex {
+        self.last_applied
+    }
+
+    pub fn set_last_applied(&mut self, index: LogIndex) {
+        self.last_applied = index;
+    }
+
     pub fn next_index(&self) -> &M {
         &self.next_index
     }

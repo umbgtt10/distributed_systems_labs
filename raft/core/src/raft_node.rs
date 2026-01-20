@@ -72,15 +72,37 @@ where
     pub(crate) fn new_from_builder(
         id: NodeId,
         storage: S,
-        state_machine: SM,
+        mut state_machine: SM,
         mut election: ElectionManager<C, TS>,
-        replication: LogReplicationManager<M>,
+        mut replication: LogReplicationManager<M>,
         transport: T,
         peers: C,
         observer: O,
         snapshot_threshold: LogIndex,
-    ) -> Self {
+    ) -> Self
+    where
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+    {
         let current_term = storage.current_term();
+
+        // CRASH RECOVERY: Restore state machine from snapshot if one exists
+        let mut last_applied = 0;
+        if let Some(snapshot) = storage.load_snapshot() {
+            // Restore state machine to snapshot state
+            let _ = state_machine.restore_from_snapshot(&snapshot.data);
+            last_applied = snapshot.metadata.last_included_index;
+
+            // Note: Storage indices are already adjusted by load_snapshot
+            // The storage implementation handles first_log_index internally
+        }
+
+        // NOTE: We do NOT replay uncommitted log entries on restart.
+        // Raft safety requires that only committed entries are applied to the state machine.
+        // After a crash, we don't know which entries were committed, so we only restore
+        // from the snapshot. Uncommitted entries will be re-replicated by the leader.
+
+        // Update replication manager's last_applied index
+        replication.set_last_applied(last_applied);
 
         // Start election timer for initial Follower state
         election.timer_service_mut().reset_election_timer();

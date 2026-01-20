@@ -3,7 +3,19 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
-    chunk_collection::ChunkCollection, election_manager::ElectionManager, log_entry_collection::LogEntryCollection, log_replication_manager::LogReplicationManager, map_collection::MapCollection, node_collection::NodeCollection, observer::Observer, raft_node::RaftNode, state_machine::StateMachine, storage::Storage, timer_service::TimerService, transport::Transport, types::{LogIndex, NodeId}
+    chunk_collection::ChunkCollection,
+    election_manager::ElectionManager,
+    log_entry_collection::LogEntryCollection,
+    log_replication_manager::LogReplicationManager,
+    map_collection::MapCollection,
+    node_collection::NodeCollection,
+    observer::Observer,
+    raft_node::RaftNode,
+    state_machine::StateMachine,
+    storage::Storage,
+    timer_service::TimerService,
+    transport::Transport,
+    types::{LogIndex, NodeId},
 };
 
 /// Builder for constructing a RaftNode with proper initialization order
@@ -147,6 +159,7 @@ where
         L: LogEntryCollection<Payload = P> + Clone,
         CC: ChunkCollection + Clone,
         S: Storage<Payload = P, LogEntryCollection = L, SnapshotChunk = CC> + Clone,
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
         O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
     {
         RaftNode::new_from_builder(

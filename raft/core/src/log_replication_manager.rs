@@ -65,11 +65,21 @@ where
         let prev_log_index = next_idx.saturating_sub(1);
         let prev_log_term = if prev_log_index == 0 {
             0
+        } else if let Some(entry) = storage.get_entry(prev_log_index) {
+            // Entry exists in log
+            entry.term
+        } else if let Some(snapshot) = storage.load_snapshot() {
+            // Entry was compacted - check if it's the snapshot point
+            if prev_log_index == snapshot.metadata.last_included_index {
+                snapshot.metadata.last_included_term
+            } else {
+                // Entry is before snapshot - this shouldn't happen in normal operation
+                // The follower needs the snapshot via InstallSnapshot RPC
+                0
+            }
         } else {
-            storage
-                .get_entry(prev_log_index)
-                .map(|e| e.term)
-                .unwrap_or(0)
+            // No entry and no snapshot - shouldn't happen
+            0
         };
 
         let entries = storage.get_entries(next_idx, storage.last_log_index() + 1);

@@ -168,20 +168,22 @@ impl Storage for InMemoryStorage {
     }
 
     fn discard_entries_before(&mut self, index: LogIndex) {
-        if index < self.first_index {
+        if index <= self.first_index {
             return;
         }
 
-        let num_to_discard = (index - self.first_index + 1) as usize;
+        let num_to_discard = (index - self.first_index) as usize;
 
         if num_to_discard >= self.log.len() {
+            // Discarding all entries
             self.log = InMemoryLogEntryCollection::new(&[]);
+            // New first index is the one we're discarding up to
+            self.first_index = index;
         } else {
             let remaining = self.log.as_slice()[num_to_discard..].to_vec();
             self.log = InMemoryLogEntryCollection::new(&remaining);
+            self.first_index = index;
         }
-
-        self.first_index = index + 1;
     }
 
     fn first_log_index(&self) -> LogIndex {

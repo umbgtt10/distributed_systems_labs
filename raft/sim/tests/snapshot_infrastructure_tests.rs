@@ -144,7 +144,8 @@ fn test_storage_discard_entries_before() {
     assert!(storage.get_entry(5).is_some());
 
     // Discard entries 1-5 (keep 6-10)
-    storage.discard_entries_before(5);
+    // Note: discard_entries_before(6) means "discard entries with index < 6"
+    storage.discard_entries_before(6);
 
     assert_eq!(storage.first_log_index(), 6);
     assert_eq!(storage.last_log_index(), 10);
@@ -173,8 +174,9 @@ fn test_storage_discard_all_entries() {
         .collect();
     storage.append_entries(&entries);
 
-    // Discard all entries
-    storage.discard_entries_before(5);
+    // Discard all entries (entries 1-5)
+    // To discard 1-5, we call discard_entries_before(6)
+    storage.discard_entries_before(6);
 
     assert_eq!(storage.first_log_index(), 6);
     assert_eq!(storage.last_log_index(), 5); // No entries remain, but first_index moved

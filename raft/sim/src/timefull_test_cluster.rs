@@ -36,6 +36,7 @@ pub struct TimefullTestCluster {
     broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
     message_log: Vec<(NodeId, NodeId, RaftMsg<String, InMemoryLogEntryCollection>)>,
     clock: MockClock,
+    snapshot_threshold: u64,
 }
 
 impl TimefullTestCluster {
@@ -45,7 +46,14 @@ impl TimefullTestCluster {
             broker: Arc::new(Mutex::new(MessageBroker::new())),
             message_log: Vec::new(),
             clock: MockClock::new(),
+            snapshot_threshold: 10, // Default threshold
         }
+    }
+
+    /// Configure snapshot threshold for all nodes (must be called before adding nodes)
+    pub fn with_snapshot_threshold(mut self, threshold: u64) -> Self {
+        self.snapshot_threshold = threshold;
+        self
     }
 
     pub fn get_node(&self, id: NodeId) -> &InMemoryTimefullRaftNode {
@@ -74,6 +82,7 @@ impl TimefullTestCluster {
 
         let peers = InMemoryNodeCollection::new();
         let node = RaftNodeBuilder::new(id, InMemoryStorage::new(), InMemoryStateMachine::new())
+            .with_snapshot_threshold(self.snapshot_threshold)
             .with_election(ElectionManager::new(timer))
             .with_replication(LogReplicationManager::new())
             .with_transport(transport, peers, NullObserver::new());
@@ -110,6 +119,7 @@ impl TimefullTestCluster {
 
             // Re-create the node with updated peers
             let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
+                .with_snapshot_threshold(self.snapshot_threshold)
                 .with_election(ElectionManager::new(timer))
                 .with_replication(LogReplicationManager::new())
                 .with_transport(transport, peers, NullObserver::new());

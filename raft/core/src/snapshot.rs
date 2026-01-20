@@ -135,4 +135,5 @@ pub enum SnapshotError {
     DeserializationFailed,
     NoEntriesToSnapshot,
     EntryNotFound,
+    NotLeader,
 }

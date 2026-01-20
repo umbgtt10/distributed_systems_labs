@@ -3,11 +3,18 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
-    election_manager::ElectionManager, log_entry_collection::LogEntryCollection,
-    log_replication_manager::LogReplicationManager, map_collection::MapCollection,
-    node_collection::NodeCollection, observer::Observer, raft_node::RaftNode,
-    state_machine::StateMachine, storage::Storage, timer_service::TimerService,
-    transport::Transport, types::NodeId,
+    election_manager::ElectionManager,
+    log_entry_collection::LogEntryCollection,
+    log_replication_manager::LogReplicationManager,
+    map_collection::MapCollection,
+    node_collection::NodeCollection,
+    observer::Observer,
+    raft_node::RaftNode,
+    state_machine::StateMachine,
+    storage::Storage,
+    timer_service::TimerService,
+    transport::Transport,
+    types::{LogIndex, NodeId},
 };
 
 /// Builder for constructing a RaftNode with proper initialization order
@@ -15,6 +22,7 @@ pub struct RaftNodeBuilder<S, SM, P> {
     id: NodeId,
     storage: S,
     state_machine: SM,
+    snapshot_threshold: LogIndex,
     _phantom: core::marker::PhantomData<P>,
 }
 
@@ -29,8 +37,15 @@ where
             id,
             storage,
             state_machine,
+            snapshot_threshold: 10, // Default threshold
             _phantom: core::marker::PhantomData,
         }
+    }
+
+    /// Configure snapshot threshold (default: 10)
+    pub fn with_snapshot_threshold(mut self, threshold: LogIndex) -> Self {
+        self.snapshot_threshold = threshold;
+        self
     }
 
     /// Add election manager (with embedded timer service)
@@ -49,6 +64,7 @@ where
             id: self.id,
             storage: self.storage,
             state_machine: self.state_machine,
+            snapshot_threshold: self.snapshot_threshold,
             election,
         }
     }
@@ -66,6 +82,7 @@ where
     id: NodeId,
     storage: S,
     state_machine: SM,
+    snapshot_threshold: LogIndex,
     election: ElectionManager<C, TS>,
 }
 
@@ -94,6 +111,7 @@ where
             id: self.id,
             storage: self.storage,
             state_machine: self.state_machine,
+            snapshot_threshold: self.snapshot_threshold,
             election: self.election,
             replication,
         }
@@ -113,6 +131,7 @@ where
     id: NodeId,
     storage: S,
     state_machine: SM,
+    snapshot_threshold: LogIndex,
     election: ElectionManager<C, TS>,
     replication: LogReplicationManager<M>,
 }
@@ -149,6 +168,7 @@ where
             transport,
             peers,
             observer,
+            self.snapshot_threshold,
         )
     }
 }

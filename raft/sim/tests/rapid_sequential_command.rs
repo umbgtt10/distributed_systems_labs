@@ -33,13 +33,14 @@ fn test_liveness_rapid_sequential_commands() {
         .on_event(Event::TimerFired(TimerKind::Heartbeat));
     cluster.deliver_messages();
 
-    // All nodes should have all 20 entries
+    // All nodes should have all 20 entries (either in log or snapshot)
     for node_id in 1..=3 {
         assert_eq!(cluster.get_node(node_id).storage().last_log_index(), 20);
         assert_eq!(cluster.get_node(node_id).commit_index(), 20);
 
-        // Verify order is preserved
-        for i in 1..=20 {
+        // Verify order is preserved (check entries that exist in log)
+        let first_log_index = cluster.get_node(node_id).storage().first_log_index();
+        for i in first_log_index..=20 {
             let entry = cluster.get_node(node_id).storage().get_entry(i).unwrap();
             assert_eq!(entry.payload, format!("SET x={}", i));
         }

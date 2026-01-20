@@ -1,4 +1,4 @@
-use raft_core::{event::Event, node_state::NodeState, storage::Storage, timer_service::TimerKind};
+use raft_core::{event::Event, log_entry::EntryType, node_state::NodeState, storage::Storage, timer_service::TimerKind};
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
 #[test]
@@ -23,7 +23,11 @@ fn test_safety_append_entries_idempotency() {
 
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 1);
     let entry = cluster.get_node(2).storage().get_entry(1).unwrap();
-    assert_eq!(entry.payload, "SET x=1");
+    if let EntryType::Command(ref p) = entry.entry_type {
+        assert_eq!(p, "SET x=1");
+    } else {
+        panic!("Expected Command entry");
+    }
 
     // Simulate duplicate AppendEntries (network retransmission)
     cluster
@@ -34,7 +38,9 @@ fn test_safety_append_entries_idempotency() {
     // Should still have exactly 1 entry (not duplicated)
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 1);
     let entry = cluster.get_node(2).storage().get_entry(1).unwrap();
-    assert_eq!(entry.payload, "SET x=1");
+    if let EntryType::Command(ref p) = entry.entry_type {
+        assert_eq!(p, "SET x=1");
+    }
 
     // Send another heartbeat
     cluster

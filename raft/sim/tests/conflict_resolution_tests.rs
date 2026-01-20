@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    event::Event, log_entry::LogEntry, node_state::NodeState, state_machine::StateMachine,
+    event::Event, log_entry::{EntryType, LogEntry}, node_state::NodeState, state_machine::StateMachine,
     storage::Storage, timer_service::TimerKind,
 };
 use raft_sim::{in_memory_storage::InMemoryStorage, timeless_test_cluster::TimelessTestCluster};
@@ -37,12 +37,12 @@ fn test_safety_log_conflict_resolution() {
     // Add entry 1 (matches cluster)
     storage_node2.append_entries(&[LogEntry {
         term: 1,
-        payload: "SET x=1".to_string(),
+        entry_type: raft_core::log_entry::EntryType::Command("SET x=1".to_string()),
     }]);
     // Add CONFLICTING entry 2
     storage_node2.append_entries(&[LogEntry {
         term: 1,
-        payload: "SET x=99".to_string(), // Conflict!
+        entry_type: raft_core::log_entry::EntryType::Command("SET x=99".to_string()), // Conflict!
     }]);
 
     cluster.add_node_with_storage(2, storage_node2);
@@ -74,10 +74,18 @@ fn test_safety_log_conflict_resolution() {
     assert_eq!(cluster.get_node(2).storage().last_log_index(), 2);
 
     let entry2_node2 = cluster.get_node(2).storage().get_entry(2).unwrap();
-    assert_eq!(entry2_node2.payload, "SET y=2"); // Overwritten with correct entry
+    if let EntryType::Command(ref p) = entry2_node2.entry_type {
+        assert_eq!(p, "SET y=2"); // Overwritten with correct entry
+    } else {
+        panic!("Expected Command entry");
+    }
 
     let entry2_node3 = cluster.get_node(3).storage().get_entry(2).unwrap();
-    assert_eq!(entry2_node3.payload, "SET y=2");
+    if let EntryType::Command(ref p) = entry2_node3.entry_type {
+        assert_eq!(p, "SET y=2");
+    } else {
+        panic!("Expected Command entry");
+    }
 
     // State machines should match
     cluster

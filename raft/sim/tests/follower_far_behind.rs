@@ -1,3 +1,7 @@
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Licensed under the Apache License, Version 2.0
+// http://www.apache.org/licenses/LICENSE-2.0
+
 use raft_core::{
     event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
     timer_service::TimerKind,
@@ -64,7 +68,9 @@ fn test_liveness_follower_far_behind() {
 
     for i in 1..=5 {
         let entry = cluster.get_node(2).storage().get_entry(i).unwrap();
-        assert_eq!(entry.payload, format!("SET x={}", i));
+        if let raft_core::log_entry::EntryType::Command(ref p) = entry.entry_type {
+            assert_eq!(p, &format!("SET x={}", i));
+        }
     }
 
     // Verify commit and state machine

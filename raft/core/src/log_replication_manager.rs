@@ -4,6 +4,7 @@
 
 use crate::{
     chunk_collection::ChunkCollection,
+    log_entry::EntryType,
     log_entry_collection::LogEntryCollection,
     map_collection::MapCollection,
     node_state::NodeState,
@@ -290,7 +291,10 @@ where
         while self.last_applied < self.commit_index {
             self.last_applied += 1;
             if let Some(entry) = storage.get_entry(self.last_applied) {
-                state_machine.apply(&entry.payload);
+                if let EntryType::Command(ref payload) = entry.entry_type {
+                    state_machine.apply(payload);
+                }
+                // ConfigChange entries will be handled in future tasks
             }
         }
     }

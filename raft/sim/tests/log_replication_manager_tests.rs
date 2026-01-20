@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    log_entry::LogEntry,
+    log_entry::{EntryType, LogEntry},
     log_entry_collection::LogEntryCollection,
     log_replication_manager::LogReplicationManager,
     map_collection::MapCollection,
@@ -38,11 +38,11 @@ fn test_liveness_accept_entries_from_leader() {
     let entries = InMemoryLogEntryCollection::new(&[
         LogEntry {
             term: 2,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
     ]);
 
@@ -81,7 +81,7 @@ fn test_safety_reject_entries_from_stale_term() {
 
     let entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
-        payload: "cmd1".to_string(),
+        entry_type: EntryType::Command("cmd1".to_string()),
     }]);
 
     let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
@@ -119,7 +119,7 @@ fn test_safety_reject_inconsistent_prev_log() {
     // Storage has no entries, but leader assumes we have entry at index 5
     let entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 2,
-        payload: "cmd".to_string(),
+        entry_type: EntryType::Command("cmd".to_string()),
     }]);
 
     let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
@@ -151,7 +151,7 @@ fn test_safety_reject_mismatched_prev_log_term() {
     // Add an entry at index 1 with term 1
     storage.append_entries(&[LogEntry {
         term: 1,
-        payload: "old".to_string(),
+        entry_type: EntryType::Command("old".to_string()),
     }]);
 
     let mut current_term = 3;
@@ -160,7 +160,7 @@ fn test_safety_reject_mismatched_prev_log_term() {
 
     let entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
-        payload: "new".to_string(),
+        entry_type: EntryType::Command("new".to_string()),
     }]);
 
     // Leader thinks our entry at index 1 has term 2 (but we have term 1)
@@ -194,15 +194,15 @@ fn test_safety_delete_conflicting_entries() {
     storage.append_entries(&[
         LogEntry {
             term: 1,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 1,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
         LogEntry {
             term: 1,
-            payload: "cmd3".to_string(),
+            entry_type: EntryType::Command("cmd3".to_string()),
         },
     ]);
 
@@ -213,7 +213,7 @@ fn test_safety_delete_conflicting_entries() {
     // Leader sends entry at index 2 with different term (conflict!)
     let entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 2,
-        payload: "new_cmd2".to_string(),
+        entry_type: EntryType::Command("new_cmd2".to_string()),
     }]);
 
     replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
@@ -248,11 +248,11 @@ fn test_liveness_heartbeat_updates_commit_index() {
     storage.append_entries(&[
         LogEntry {
             term: 2,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
     ]);
 
@@ -323,23 +323,23 @@ fn test_liveness_update_next_index_on_success() {
     storage.append_entries(&[
         LogEntry {
             term: 2,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd3".to_string(),
+            entry_type: EntryType::Command("cmd3".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd4".to_string(),
+            entry_type: EntryType::Command("cmd4".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd5".to_string(),
+            entry_type: EntryType::Command("cmd5".to_string()),
         },
     ]);
 
@@ -380,7 +380,7 @@ fn test_liveness_decrement_next_index_on_failure() {
 
     storage.append_entries(&[LogEntry {
         term: 2,
-        payload: "cmd".to_string(),
+        entry_type: EntryType::Command("cmd".to_string()),
     }]);
 
     let mut peers = InMemoryNodeCollection::new();
@@ -416,23 +416,23 @@ fn test_liveness_commit_index_advancement_on_majority() {
     storage.append_entries(&[
         LogEntry {
             term: 2,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd3".to_string(),
+            entry_type: EntryType::Command("cmd3".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd4".to_string(),
+            entry_type: EntryType::Command("cmd4".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd5".to_string(),
+            entry_type: EntryType::Command("cmd5".to_string()),
         },
     ]);
 
@@ -494,15 +494,15 @@ fn test_safety_only_commit_current_term_entries() {
     storage.append_entries(&[
         LogEntry {
             term: 1,
-            payload: "old1".to_string(),
+            entry_type: EntryType::Command("old1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "old2".to_string(),
+            entry_type: EntryType::Command("old2".to_string()),
         },
         LogEntry {
             term: 3,
-            payload: "new1".to_string(),
+            entry_type: EntryType::Command("new1".to_string()),
         },
     ]);
 
@@ -537,7 +537,7 @@ fn test_safety_ignore_responses_from_old_term() {
 
     storage.append_entries(&[LogEntry {
         term: 3,
-        payload: "cmd".to_string(),
+        entry_type: EntryType::Command("cmd".to_string()),
     }]);
 
     let mut peers = InMemoryNodeCollection::new();
@@ -580,7 +580,7 @@ fn test_liveness_initialize_leader_state() {
     for i in 1..=10 {
         storage.append_entries(&[LogEntry {
             term: 1,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         }]);
     }
 
@@ -612,11 +612,11 @@ fn test_safety_append_entries_with_exact_match() {
     storage.append_entries(&[
         LogEntry {
             term: 1,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
     ]);
 
@@ -628,11 +628,11 @@ fn test_safety_append_entries_with_exact_match() {
     let entries = InMemoryLogEntryCollection::new(&[
         LogEntry {
             term: 1,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
     ]);
 
@@ -661,11 +661,11 @@ fn test_safety_commit_index_never_decreases() {
     storage.append_entries(&[
         LogEntry {
             term: 2,
-            payload: "cmd1".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd2".to_string()),
         },
     ]);
 
@@ -720,11 +720,11 @@ fn test_liveness_three_node_cluster_majority() {
     storage.append_entries(&[
         LogEntry {
             term: 1,
-            payload: "cmd1".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd1".to_string()),
         },
         LogEntry {
             term: 1,
-            payload: "cmd2".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd2".to_string()),
         },
     ]);
 
@@ -762,7 +762,7 @@ fn test_liveness_get_append_entries_with_compacted_snapshot_point() {
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: raft_core::log_entry::EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -840,7 +840,7 @@ fn test_safety_get_append_entries_before_snapshot_point() {
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: raft_core::log_entry::EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -916,7 +916,7 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
     let entries: Vec<LogEntry<String>> = (1..=20)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: raft_core::log_entry::EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -948,7 +948,7 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
     // Leader sends AppendEntries with prev_log_index=10 (compacted, not at snapshot point)
     let leader_entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
-        payload: "new_cmd".to_string(),
+        entry_type: raft_core::log_entry::EntryType::Command("new_cmd".to_string()),
     }]);
 
     let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
@@ -998,7 +998,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: raft_core::log_entry::EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -1027,7 +1027,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
     // Leader sends AppendEntries with prev_log_index=10 (at snapshot point), prev_log_term=2
     let leader_entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
-        payload: "cmd16".to_string(),
+        entry_type: raft_core::log_entry::EntryType::Command("cmd16".to_string()),
     }]);
 
     let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
@@ -1043,7 +1043,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
     );
 
     match response {
-        raft_core::raft_messages::RaftMsg::AppendEntriesResponse {
+        RaftMsg::AppendEntriesResponse {
             term,
             success,
             match_index,
@@ -1080,7 +1080,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -1106,7 +1106,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
     // Leader sends AppendEntries with prev_log_index=10 but WRONG term
     let leader_entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
-        payload: "cmd16".to_string(),
+        entry_type: raft_core::log_entry::EntryType::Command("cmd16".to_string()),
     }]);
 
     let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
@@ -1122,7 +1122,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
     );
 
     match response {
-        raft_core::raft_messages::RaftMsg::AppendEntriesResponse {
+        RaftMsg::AppendEntriesResponse {
             term,
             success,
             match_index: _,
@@ -1153,7 +1153,7 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
     let entries: Vec<LogEntry<String>> = (1..=20)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -1184,11 +1184,11 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
     let leader_entries = InMemoryLogEntryCollection::new(&[
         LogEntry {
             term: 2,
-            payload: "cmd21".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd21".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd22".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd22".to_string()),
         },
     ]);
 
@@ -1238,7 +1238,7 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
     let entries: Vec<LogEntry<String>> = (1..=10)
         .map(|i| LogEntry {
             term: 1, // Different term!
-            payload: format!("cmd{}", i),
+            entry_type: raft_core::log_entry::EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -1263,7 +1263,7 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
     // Leader thinks snapshot should be term 2 (different history!)
     let leader_entries = InMemoryLogEntryCollection::new(&[LogEntry {
         term: 3,
-        payload: "cmd11".to_string(),
+        entry_type: raft_core::log_entry::EntryType::Command("cmd11".to_string()),
     }]);
 
     let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
@@ -1309,7 +1309,7 @@ fn test_liveness_leader_detects_follower_needs_snapshot() {
     let entries: Vec<LogEntry<String>> = (1..=20)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -1385,7 +1385,7 @@ fn test_liveness_follower_installs_snapshot_successfully() {
     let old_entries: Vec<LogEntry<String>> = (1..=5)
         .map(|i| LogEntry {
             term: 1,
-            payload: format!("old_cmd{}", i),
+            entry_type: EntryType::Command(format!("old_cmd{}", i)),
         })
         .collect();
     storage.append_entries(&old_entries);
@@ -1634,11 +1634,11 @@ fn test_liveness_replication_resumes_after_snapshot_install() {
     let new_entries = InMemoryLogEntryCollection::new(&[
         LogEntry {
             term: 2,
-            payload: "cmd11".to_string(),
+            entry_type: EntryType::Command("cmd11".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "cmd12".to_string(),
+            entry_type: EntryType::Command("cmd12".to_string()),
         },
     ]);
 
@@ -1729,7 +1729,7 @@ fn test_liveness_leader_updates_next_index_after_snapshot_success() {
     let entries: Vec<LogEntry<String>> = (1..=20)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);

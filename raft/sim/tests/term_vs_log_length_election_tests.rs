@@ -2,7 +2,10 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use raft_core::{event::Event, node_state::NodeState, storage::Storage, timer_service::TimerKind};
+use raft_core::{
+    event::Event, log_entry::{EntryType, LogEntry}, node_state::NodeState, storage::Storage,
+    timer_service::TimerKind,
+};
 use raft_sim::{in_memory_storage::InMemoryStorage, timeless_test_cluster::TimelessTestCluster};
 
 /// Test: Higher Term wins against Longer Log
@@ -35,13 +38,13 @@ fn test_safety_higher_term_beats_longer_log() {
     // Or just [2, 2].
     // Let's use [1, 2].
     storage1.append_entries(&[
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "1".to_string(),
+            entry_type: EntryType::Command("1".to_string()),
         },
         raft_core::log_entry::LogEntry {
             term: 2,
-            payload: "2".to_string(),
+            entry_type: EntryType::Command("2".to_string()),
         },
     ]);
     cluster.add_node_with_storage(1, storage1);
@@ -51,25 +54,25 @@ fn test_safety_higher_term_beats_longer_log() {
     storage2.set_current_term(1);
     // Append 5 entries (Term 1)
     storage2.append_entries(&[
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "1".to_string(),
+            entry_type: EntryType::Command("1".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "2".to_string(),
+            entry_type: EntryType::Command("2".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "3".to_string(),
+            entry_type: EntryType::Command("3".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "4".to_string(),
+            entry_type: EntryType::Command("4".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "5".to_string(),
+            entry_type: EntryType::Command("5".to_string()),
         },
     ]);
     cluster.add_node_with_storage(2, storage2);
@@ -104,13 +107,13 @@ fn test_safety_older_longer_log_loses_to_newer_shorter() {
     let mut storage1 = InMemoryStorage::new();
     storage1.set_current_term(2);
     storage1.append_entries(&[
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "1".to_string(),
+            entry_type: EntryType::Command("1".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 2,
-            payload: "2".to_string(),
+            entry_type: EntryType::Command("2".to_string()),
         },
     ]);
     cluster.add_node_with_storage(1, storage1);
@@ -119,17 +122,17 @@ fn test_safety_older_longer_log_loses_to_newer_shorter() {
     let mut storage2 = InMemoryStorage::new();
     storage2.set_current_term(1);
     storage2.append_entries(&[
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "1".to_string(),
+            entry_type: EntryType::Command("1".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "2".to_string(),
+            entry_type: EntryType::Command("2".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "3".to_string(),
+            entry_type: EntryType::Command("3".to_string()),
         },
     ]);
     cluster.add_node_with_storage(2, storage2);

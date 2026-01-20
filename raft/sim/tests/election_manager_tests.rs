@@ -1,9 +1,10 @@
-﻿// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
     election_manager::ElectionManager,
+    log_entry::{EntryType, LogEntry},
     node_collection::NodeCollection,
     node_state::NodeState,
     raft_messages::RaftMsg,
@@ -197,15 +198,15 @@ fn test_safety_reject_less_up_to_date_candidate() {
     storage.append_entries(&[
         raft_core::log_entry::LogEntry {
             term: 1,
-            payload: "cmd1".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd1".to_string()),
         },
         raft_core::log_entry::LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd2".to_string()),
         },
         raft_core::log_entry::LogEntry {
             term: 2,
-            payload: "cmd3".to_string(),
+            entry_type: raft_core::log_entry::EntryType::Command("cmd3".to_string()),
         },
     ]);
 
@@ -242,13 +243,13 @@ fn test_safety_grant_to_equally_up_to_date_candidate() {
     let mut storage = InMemoryStorage::new();
 
     storage.append_entries(&[
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 1,
-            payload: "cmd1".to_string(),
+            entry_type: EntryType::Command("cmd1".to_string()),
         },
-        raft_core::log_entry::LogEntry {
+        LogEntry {
             term: 2,
-            payload: "cmd2".to_string(),
+            entry_type: EntryType::Command("cmd2".to_string()),
         },
     ]);
 
@@ -594,20 +595,15 @@ fn test_liveness_start_election_with_compacted_log() {
     let mut role = NodeState::Follower;
 
     // Create log with entries 1-15
-    use raft_core::log_entry::LogEntry;
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
 
     // Create snapshot at index 10, term 2
-    use raft_core::snapshot::{Snapshot, SnapshotMetadata};
-    use raft_core::state_machine::StateMachine;
-    use raft_sim::in_memory_state_machine::InMemoryStateMachine;
-
     let mut state_machine = InMemoryStateMachine::new();
     for i in 1..=10 {
         state_machine.apply(&format!("cmd{}", i));
@@ -673,11 +669,10 @@ fn test_safety_grant_vote_with_compacted_log() {
     let mut role = NodeState::Follower;
 
     // Voter has entries 1-20, creates snapshot at 15, compacts everything
-    use raft_core::log_entry::LogEntry;
     let entries: Vec<LogEntry<String>> = (1..=20)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -757,7 +752,7 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -820,11 +815,10 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
     let mut role = NodeState::Follower;
 
     // Voter has snapshot at index 15, term 2
-    use raft_core::log_entry::LogEntry;
     let entries: Vec<LogEntry<String>> = (1..=15)
         .map(|i| LogEntry {
             term: 2,
-            payload: format!("cmd{}", i),
+            entry_type: EntryType::Command(format!("cmd{}", i)),
         })
         .collect();
     storage.append_entries(&entries);

@@ -502,7 +502,7 @@ where
 
         let entry = LogEntry {
             term: self.current_term,
-            payload,
+            entry_type: crate::log_entry::EntryType::Command(payload),
         };
         self.storage.append_entries(&[entry]);
         let index = self.storage.last_log_index();

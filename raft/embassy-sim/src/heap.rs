@@ -9,7 +9,7 @@ static HEAP: Heap = Heap::empty();
 
 #[allow(static_mut_refs)]
 pub fn init_heap() {
-    const HEAP_SIZE: usize = 1024 * 1024; // 1 MB heap
+    const HEAP_SIZE: usize = 256 * 1024; // 256 KB heap (reduced for embedded constraints)
     static mut HEAP_MEM: [u8; HEAP_SIZE] = [0; HEAP_SIZE];
     unsafe { HEAP.init(HEAP_MEM.as_ptr() as usize, HEAP_SIZE) }
 }

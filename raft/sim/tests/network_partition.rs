@@ -3,8 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
-    timer_service::TimerKind,
+    event::Event, log_entry::EntryType, node_state::NodeState, state_machine::StateMachine, storage::Storage, timer_service::TimerKind
 };
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
@@ -82,7 +81,9 @@ fn test_liveness_network_partition_recovery() {
     // Node 1's uncommitted entry is overwritten
     assert_eq!(cluster.get_node(1).storage().last_log_index(), 2);
     let entry2_node1 = cluster.get_node(1).storage().get_entry(2).unwrap();
-    assert_eq!(entry2_node1.payload, "SET z=3"); // Overwritten
+    if let EntryType::Command(ref p) = entry2_node1.entry_type {
+        assert_eq!(p, "SET z=3"); // Overwritten
+    }
 
     // All nodes have consistent logs
     for node_id in 1..=5 {
@@ -90,10 +91,14 @@ fn test_liveness_network_partition_recovery() {
         assert_eq!(cluster.get_node(node_id).commit_index(), 2);
 
         let entry1 = cluster.get_node(node_id).storage().get_entry(1).unwrap();
-        assert_eq!(entry1.payload, "SET x=1");
+        if let EntryType::Command(ref p) = entry1.entry_type {
+            assert_eq!(p, "SET x=1");
+        }
 
         let entry2 = cluster.get_node(node_id).storage().get_entry(2).unwrap();
-        assert_eq!(entry2.payload, "SET z=3");
+        if let EntryType::Command(ref p) = entry2.entry_type {
+            assert_eq!(p, "SET z=3");
+        }
     }
 
     // State machines are consistent

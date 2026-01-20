@@ -3,7 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    event::Event, state_machine::StateMachine, storage::Storage, timer_service::TimerKind,
+    event::Event, log_entry::EntryType, state_machine::StateMachine, storage::Storage, timer_service::TimerKind
 };
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
@@ -58,18 +58,26 @@ fn test_liveness_state_machine_apply() {
     // Print all entries in follower logs
     for i in 1..=cluster.get_node(2).storage().last_log_index() {
         if let Some(entry) = cluster.get_node(2).storage().get_entry(i) {
+            let payload_str = match &entry.entry_type {
+                EntryType::Command(p) => format!("{:?}", p),
+                _ => "ConfigChange".to_string(),
+            };
             println!(
-                "Node 2 entry {}: term={}, payload={:?}",
-                i, entry.term, entry.payload
+                "Node 2 entry {}: term={}, payload={}",
+                i, entry.term, payload_str
             );
         }
     }
 
     for i in 1..=cluster.get_node(3).storage().last_log_index() {
         if let Some(entry) = cluster.get_node(3).storage().get_entry(i) {
+            let payload_str = match &entry.entry_type {
+                EntryType::Command(p) => format!("{:?}", p),
+                _ => "ConfigChange".to_string(),
+            };
             println!(
-                "Node 3 entry {}: term={}, payload={:?}",
-                i, entry.term, entry.payload
+                "Node 3 entry {}: term={}, payload={}",
+                i, entry.term, payload_str
             );
         }
     }

@@ -1,6 +1,5 @@
 use raft_core::{
-    event::Event, node_state::NodeState, state_machine::StateMachine, storage::Storage,
-    timer_service::TimerKind,
+    event::Event, log_entry::EntryType, node_state::NodeState, state_machine::StateMachine, storage::Storage, timer_service::TimerKind
 };
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
@@ -42,7 +41,9 @@ fn test_liveness_rapid_sequential_commands() {
         let first_log_index = cluster.get_node(node_id).storage().first_log_index();
         for i in first_log_index..=20 {
             let entry = cluster.get_node(node_id).storage().get_entry(i).unwrap();
-            assert_eq!(entry.payload, format!("SET x={}", i));
+            if let EntryType::Command(ref p) = entry.entry_type {
+                assert_eq!(p, &format!("SET x={}", i));
+            }
         }
     }
 

@@ -11,21 +11,87 @@ use crate::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use alloc::vec::Vec;
-use raft_core::{chunk_collection::ChunkCollection, log_entry::LogEntry, raft_messages::RaftMsg};
+use raft_core::{
+    chunk_collection::ChunkCollection,
+    log_entry::{ConfigurationChange, EntryType, LogEntry},
+    raft_messages::RaftMsg,
+};
 use serde::{Deserialize, Serialize};
+
+/// Serializable configuration change for wire protocol
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WireConfigurationChange {
+    AddServer { node_id: u64 },
+    RemoveServer { node_id: u64 },
+}
+
+impl From<ConfigurationChange> for WireConfigurationChange {
+    fn from(change: ConfigurationChange) -> Self {
+        match change {
+            ConfigurationChange::AddServer(node_id) => {
+                WireConfigurationChange::AddServer { node_id }
+            }
+            ConfigurationChange::RemoveServer(node_id) => {
+                WireConfigurationChange::RemoveServer { node_id }
+            }
+        }
+    }
+}
+
+impl From<WireConfigurationChange> for ConfigurationChange {
+    fn from(wire: WireConfigurationChange) -> Self {
+        match wire {
+            WireConfigurationChange::AddServer { node_id } => {
+                ConfigurationChange::AddServer(node_id)
+            }
+            WireConfigurationChange::RemoveServer { node_id } => {
+                ConfigurationChange::RemoveServer(node_id)
+            }
+        }
+    }
+}
+
+/// Serializable entry type for wire protocol
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WireEntryType {
+    Command { payload: String },
+    ConfigChange { change: WireConfigurationChange },
+}
+
+impl From<EntryType<String>> for WireEntryType {
+    fn from(entry_type: EntryType<String>) -> Self {
+        match entry_type {
+            EntryType::Command(payload) => WireEntryType::Command { payload },
+            EntryType::ConfigChange(change) => WireEntryType::ConfigChange {
+                change: WireConfigurationChange::from(change),
+            },
+        }
+    }
+}
+
+impl From<WireEntryType> for EntryType<String> {
+    fn from(wire: WireEntryType) -> Self {
+        match wire {
+            WireEntryType::Command { payload } => EntryType::Command(payload),
+            WireEntryType::ConfigChange { change } => {
+                EntryType::ConfigChange(ConfigurationChange::from(change))
+            }
+        }
+    }
+}
 
 /// Serializable log entry for wire protocol
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WireLogEntry {
     pub term: u64,
-    pub payload: String,
+    pub entry_type: WireEntryType,
 }
 
 impl From<LogEntry<String>> for WireLogEntry {
     fn from(entry: LogEntry<String>) -> Self {
         Self {
             term: entry.term,
-            payload: entry.payload,
+            entry_type: WireEntryType::from(entry.entry_type),
         }
     }
 }
@@ -34,7 +100,7 @@ impl From<WireLogEntry> for LogEntry<String> {
     fn from(wire: WireLogEntry) -> Self {
         Self {
             term: wire.term,
-            payload: wire.payload,
+            entry_type: EntryType::from(wire.entry_type),
         }
     }
 }
@@ -325,18 +391,19 @@ mod tests {
 
     #[test]
     fn test_append_entries_with_log_round_trip() {
+        use raft_core::log_entry::EntryType;
         let entries = vec![
             LogEntry {
                 term: 1,
-                payload: "cmd1".to_string(),
+                entry_type: EntryType::Command("cmd1".to_string()),
             },
             LogEntry {
                 term: 2,
-                payload: "cmd2".to_string(),
+                entry_type: EntryType::Command("cmd2".to_string()),
             },
             LogEntry {
                 term: 2,
-                payload: "cmd3".to_string(),
+                entry_type: EntryType::Command("cmd3".to_string()),
             },
         ];
         let collection = EmbassyLogEntryCollection::new(&entries);
@@ -413,11 +480,12 @@ mod tests {
 
     #[test]
     fn test_large_log_entry_serialization() {
+        use raft_core::log_entry::EntryType;
         // Test with larger payload
         let large_payload = "X".repeat(1000);
         let entries = vec![LogEntry {
             term: 1,
-            payload: large_payload,
+            entry_type: EntryType::Command(large_payload),
         }];
         let collection = EmbassyLogEntryCollection::new(&entries);
 

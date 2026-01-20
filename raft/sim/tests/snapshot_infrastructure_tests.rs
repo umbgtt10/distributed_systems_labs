@@ -3,14 +3,16 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use raft_core::{
-    log_entry::LogEntry, log_entry_collection::LogEntryCollection, snapshot::Snapshot,
-    snapshot::SnapshotBuilder, snapshot::SnapshotData, snapshot::SnapshotMetadata,
-    state_machine::StateMachine, storage::Storage,
+    log_entry::EntryType, log_entry::LogEntry, log_entry_collection::LogEntryCollection,
+    snapshot::Snapshot, snapshot::SnapshotBuilder, snapshot::SnapshotData,
+    snapshot::SnapshotMetadata, state_machine::StateMachine, storage::Storage,
 };
-use raft_sim::in_memory_chunk_collection::InMemoryChunkCollection;
-use raft_sim::in_memory_state_machine::InMemoryStateMachine;
-use raft_sim::in_memory_storage::InMemoryStorage;
-use raft_sim::snapshot_types::{SimSnapshotBuilder, SimSnapshotData};
+use raft_sim::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
+    in_memory_state_machine::InMemoryStateMachine,
+    in_memory_storage::InMemoryStorage,
+    snapshot_types::{SimSnapshotBuilder, SimSnapshotData},
+};
 
 // ============================================================
 // STATE MACHINE SNAPSHOT TESTS
@@ -135,7 +137,7 @@ fn test_storage_discard_entries_before() {
     let entries: Vec<LogEntry<String>> = (1..=10)
         .map(|i| LogEntry {
             term: 1,
-            payload: format!("entry_{}", i),
+            entry_type: raft_core::log_entry::EntryType::Command(format!("entry_{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -157,9 +159,17 @@ fn test_storage_discard_entries_before() {
 
     // New entries should still be accessible
     assert!(storage.get_entry(6).is_some());
-    assert_eq!(storage.get_entry(6).unwrap().payload, "entry_6");
+    if let raft_core::log_entry::EntryType::Command(ref payload) =
+        storage.get_entry(6).unwrap().entry_type
+    {
+        assert_eq!(payload, "entry_6");
+    }
     assert!(storage.get_entry(10).is_some());
-    assert_eq!(storage.get_entry(10).unwrap().payload, "entry_10");
+    if let raft_core::log_entry::EntryType::Command(ref payload) =
+        storage.get_entry(10).unwrap().entry_type
+    {
+        assert_eq!(payload, "entry_10");
+    }
 }
 
 #[test]
@@ -170,7 +180,7 @@ fn test_storage_discard_all_entries() {
     let entries: Vec<LogEntry<String>> = (1..=5)
         .map(|i| LogEntry {
             term: 1,
-            payload: format!("entry_{}", i),
+            entry_type: raft_core::log_entry::EntryType::Command(format!("entry_{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -193,7 +203,7 @@ fn test_storage_get_entries_after_compaction() {
     let entries: Vec<LogEntry<String>> = (1..=10)
         .map(|i| LogEntry {
             term: 1,
-            payload: format!("entry_{}", i),
+            entry_type: EntryType::Command(format!("entry_{}", i)),
         })
         .collect();
     storage.append_entries(&entries);
@@ -204,9 +214,15 @@ fn test_storage_get_entries_after_compaction() {
     // get_entries should work with adjusted indices
     let fetched = storage.get_entries(6, 9);
     assert_eq!(fetched.len(), 3); // entries 6, 7, 8
-    assert_eq!(fetched.as_slice()[0].payload, "entry_6");
-    assert_eq!(fetched.as_slice()[1].payload, "entry_7");
-    assert_eq!(fetched.as_slice()[2].payload, "entry_8");
+    if let EntryType::Command(ref p) = fetched.as_slice()[0].entry_type {
+        assert_eq!(p, "entry_6");
+    }
+    if let EntryType::Command(ref p) = fetched.as_slice()[1].entry_type {
+        assert_eq!(p, "entry_7");
+    }
+    if let EntryType::Command(ref p) = fetched.as_slice()[2].entry_type {
+        assert_eq!(p, "entry_8");
+    }
 
     // Requesting compacted entries should return empty
     let fetched = storage.get_entries(1, 5);
@@ -221,15 +237,15 @@ fn test_storage_last_log_term_after_compaction() {
     storage.append_entries(&[
         LogEntry {
             term: 1,
-            payload: "entry_1".to_string(),
+            entry_type: EntryType::Command("entry_1".to_string()),
         },
         LogEntry {
             term: 2,
-            payload: "entry_2".to_string(),
+            entry_type: EntryType::Command("entry_2".to_string()),
         },
         LogEntry {
             term: 3,
-            payload: "entry_3".to_string(),
+            entry_type: EntryType::Command("entry_3".to_string()),
         },
     ]);
 

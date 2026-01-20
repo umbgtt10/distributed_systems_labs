@@ -7,6 +7,7 @@ use raft_core::{
     snapshot::SnapshotBuilder, snapshot::SnapshotData, snapshot::SnapshotMetadata,
     state_machine::StateMachine, storage::Storage,
 };
+use raft_sim::in_memory_chunk_collection::InMemoryChunkCollection;
 use raft_sim::in_memory_state_machine::InMemoryStateMachine;
 use raft_sim::in_memory_storage::InMemoryStorage;
 use raft_sim::snapshot_types::{SimSnapshotBuilder, SimSnapshotData};
@@ -261,17 +262,26 @@ fn test_snapshot_data_chunking() {
     // Get chunk at offset 0
     let chunk = data.chunk_at(0, 3);
     assert!(chunk.is_some());
-    assert_eq!(chunk.unwrap(), vec![1, 2, 3]);
+    assert_eq!(
+        chunk.unwrap(),
+        InMemoryChunkCollection::from_vec(vec![1, 2, 3])
+    );
 
     // Get chunk at offset 3
     let chunk = data.chunk_at(3, 3);
     assert!(chunk.is_some());
-    assert_eq!(chunk.unwrap(), vec![4, 5, 6]);
+    assert_eq!(
+        chunk.unwrap(),
+        InMemoryChunkCollection::from_vec(vec![4, 5, 6])
+    );
 
     // Get chunk that extends past end
     let chunk = data.chunk_at(8, 5);
     assert!(chunk.is_some());
-    assert_eq!(chunk.unwrap(), vec![9, 10]); // Only remaining bytes
+    assert_eq!(
+        chunk.unwrap(),
+        InMemoryChunkCollection::from_vec(vec![9, 10])
+    ); // Only remaining bytes
 
     // Out of bounds
     let chunk = data.chunk_at(20, 5);
@@ -297,7 +307,7 @@ fn test_storage_get_snapshot_chunk() {
     assert!(chunk.is_some());
     let chunk = chunk.unwrap();
     assert_eq!(chunk.offset, 0);
-    assert_eq!(chunk.data, vec![1, 2, 3]);
+    assert_eq!(chunk.data, InMemoryChunkCollection::from_vec(vec![1, 2, 3]));
     assert!(!chunk.done);
 
     // Get last chunk
@@ -305,7 +315,7 @@ fn test_storage_get_snapshot_chunk() {
     assert!(chunk.is_some());
     let chunk = chunk.unwrap();
     assert_eq!(chunk.offset, 6);
-    assert_eq!(chunk.data, vec![7, 8]);
+    assert_eq!(chunk.data, InMemoryChunkCollection::from_vec(vec![7, 8]));
     assert!(chunk.done); // Last chunk
 }
 
@@ -318,13 +328,13 @@ fn test_snapshot_builder_accumulate_chunks() {
     let mut builder = SimSnapshotBuilder::new();
 
     // Add chunks in order
-    let result = builder.add_chunk(0, vec![1, 2, 3]);
+    let result = builder.add_chunk(0, InMemoryChunkCollection::from_vec(vec![1, 2, 3]));
     assert!(result.is_ok());
 
-    let result = builder.add_chunk(3, vec![4, 5, 6]);
+    let result = builder.add_chunk(3, InMemoryChunkCollection::from_vec(vec![4, 5, 6]));
     assert!(result.is_ok());
 
-    let result = builder.add_chunk(6, vec![7, 8]);
+    let result = builder.add_chunk(6, InMemoryChunkCollection::from_vec(vec![7, 8]));
     assert!(result.is_ok());
 
     // Check if complete (assuming total size is 8)
@@ -341,8 +351,12 @@ fn test_snapshot_builder_accumulate_chunks() {
 fn test_snapshot_builder_incomplete() {
     let mut builder = SimSnapshotBuilder::new();
 
-    builder.add_chunk(0, vec![1, 2, 3]).unwrap();
-    builder.add_chunk(3, vec![4, 5]).unwrap();
+    builder
+        .add_chunk(0, InMemoryChunkCollection::from_vec(vec![1, 2, 3]))
+        .unwrap();
+    builder
+        .add_chunk(3, InMemoryChunkCollection::from_vec(vec![4, 5]))
+        .unwrap();
 
     // Not complete yet
     assert!(!builder.is_complete(10));

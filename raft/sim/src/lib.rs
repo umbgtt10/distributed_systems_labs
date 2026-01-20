@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+pub mod in_memory_chunk_collection;
 pub mod in_memory_log_entry_collection;
 pub mod in_memory_map_collection;
 pub mod in_memory_node_collection;

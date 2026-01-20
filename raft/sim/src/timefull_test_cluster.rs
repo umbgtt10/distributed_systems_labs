@@ -5,6 +5,7 @@
 use crate::mocked_timer_service::{MockClock, MockTimerService};
 use crate::null_observer::NullObserver;
 use crate::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
@@ -26,6 +27,7 @@ type InMemoryTimefullRaftNode = RaftNode<
     InMemoryStateMachine,
     InMemoryNodeCollection,
     InMemoryLogEntryCollection,
+    InMemoryChunkCollection,
     InMemoryMapCollection,
     MockTimerService,
     NullObserver<String, InMemoryLogEntryCollection>,
@@ -33,8 +35,12 @@ type InMemoryTimefullRaftNode = RaftNode<
 
 pub struct TimefullTestCluster {
     nodes: IndexMap<NodeId, InMemoryTimefullRaftNode>,
-    broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
-    message_log: Vec<(NodeId, NodeId, RaftMsg<String, InMemoryLogEntryCollection>)>,
+    broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection, InMemoryChunkCollection>>>,
+    message_log: Vec<(
+        NodeId,
+        NodeId,
+        RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>,
+    )>,
     clock: MockClock,
     snapshot_threshold: u64,
 }

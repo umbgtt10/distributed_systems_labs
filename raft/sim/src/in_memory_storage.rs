@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::in_memory_chunk_collection::InMemoryChunkCollection;
 use crate::in_memory_log_entry_collection::InMemoryLogEntryCollection;
 use crate::snapshot_types::{SimSnapshotBuilder, SimSnapshotData};
 use raft_core::{
@@ -21,6 +22,7 @@ pub struct InMemoryStorage {
     log: InMemoryLogEntryCollection,
     // Snapshot support
     snapshot: Option<Snapshot<SimSnapshotData>>,
+    pending_snapshot_data: Vec<u8>,
     first_index: LogIndex,
 }
 
@@ -31,6 +33,7 @@ impl InMemoryStorage {
             voted_for: None,
             log: InMemoryLogEntryCollection::new(&[]),
             snapshot: None,
+            pending_snapshot_data: Vec::new(),
             first_index: 1,
         }
     }
@@ -46,7 +49,7 @@ impl Storage for InMemoryStorage {
     type Payload = String;
     type LogEntryCollection = InMemoryLogEntryCollection;
     type SnapshotData = SimSnapshotData;
-    type SnapshotChunk = Vec<u8>;
+    type SnapshotChunk = InMemoryChunkCollection;
     type SnapshotBuilder = SimSnapshotBuilder;
 
     fn current_term(&self) -> Term {
@@ -149,6 +152,41 @@ impl Storage for InMemoryStorage {
             data: chunk_data,
             done,
         })
+    }
+
+    fn apply_snapshot_chunk(
+        &mut self,
+        offset: u64,
+        chunk: Self::SnapshotChunk,
+        done: bool,
+        last_included_index: LogIndex,
+        last_included_term: Term,
+    ) -> Result<(), SnapshotError> {
+        if offset == 0 {
+            self.pending_snapshot_data.clear();
+        }
+
+        if offset as usize != self.pending_snapshot_data.len() {
+            return Err(SnapshotError::CorruptData);
+        }
+
+        self.pending_snapshot_data
+            .extend_from_slice(&chunk.to_vec());
+
+        if done {
+            let snapshot_data = SimSnapshotData::from_vec(self.pending_snapshot_data.clone());
+
+            let snapshot = Snapshot {
+                metadata: SnapshotMetadata {
+                    last_included_index,
+                    last_included_term,
+                },
+                data: snapshot_data,
+            };
+            self.save_snapshot(snapshot);
+            self.pending_snapshot_data.clear();
+        }
+        Ok(())
     }
 
     fn begin_snapshot_transfer(&mut self) -> Self::SnapshotBuilder {

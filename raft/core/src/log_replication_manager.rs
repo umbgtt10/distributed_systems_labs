@@ -3,10 +3,12 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    chunk_collection::ChunkCollection,
     log_entry_collection::LogEntryCollection,
     map_collection::MapCollection,
     node_state::NodeState,
     raft_messages::RaftMsg,
+    snapshot::SnapshotBuilder,
     state_machine::StateMachine,
     storage::Storage,
     types::{LogIndex, NodeId, Term},
@@ -49,17 +51,61 @@ where
         }
     }
 
-    /// Get entries to send to a follower
-    pub fn get_append_entries_for_follower<P, L, S>(
+    // REMOVE THIS!!!!!!!!
+    pub fn set_next_index_for_testing(&mut self, peer: NodeId, index: LogIndex) {
+        self.next_index.insert(peer, index);
+    }
+
+    /// Get message to send to a follower (AppendEntries or InstallSnapshot)
+    pub fn get_append_entries_for_peer<P, L, C, S>(
+        &self,
+        peer: NodeId,
+        storage: &S,
+    ) -> RaftMsg<P, L, C>
+    where
+        P: Clone,
+        S: Storage<Payload = P, LogEntryCollection = L, SnapshotChunk = C> + Clone,
+        L: LogEntryCollection<Payload = P> + Clone,
+        C: ChunkCollection + Clone,
+    {
+        let next_idx = self.next_index.get(peer).unwrap_or(1);
+        let first_idx = storage.first_log_index();
+        let current_term = storage.current_term();
+
+        // Check if follower needs a snapshot
+        if next_idx < first_idx {
+            // Get chunk from storage (full snapshot for single-chunk transfer)
+            if let Some(chunk) = storage.get_snapshot_chunk(0, usize::MAX) {
+                if let Some(metadata) = storage.snapshot_metadata() {
+                    return RaftMsg::InstallSnapshot {
+                        term: current_term,
+                        leader_id: 0, // TODO: Pass leader_id as parameter
+                        last_included_index: metadata.last_included_index,
+                        last_included_term: metadata.last_included_term,
+                        offset: chunk.offset as u64,
+                        data: chunk.data,
+                        done: chunk.done,
+                    };
+                }
+            }
+        }
+
+        // Send normal AppendEntries
+        self.get_append_entries_for_follower(peer, current_term, storage)
+    }
+
+    /// Get entries to send to a follower (internal method)
+    pub fn get_append_entries_for_follower<P, L, C, S>(
         &self,
         peer: NodeId,
         current_term: Term,
         storage: &S,
-    ) -> RaftMsg<P, L>
+    ) -> RaftMsg<P, L, C>
     where
         P: Clone,
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
         L: LogEntryCollection<Payload = P> + Clone,
+        C: crate::chunk_collection::ChunkCollection + Clone,
     {
         let next_idx = self.next_index.get(peer).unwrap_or(1);
         let prev_log_index = next_idx.saturating_sub(1);
@@ -95,7 +141,7 @@ where
 
     /// Handle incoming AppendEntries - returns response message
     #[allow(clippy::too_many_arguments)]
-    pub fn handle_append_entries<P, L, S, SM>(
+    pub fn handle_append_entries<P, L, C, S, SM>(
         &mut self,
         term: Term,
         prev_log_index: LogIndex,
@@ -106,12 +152,13 @@ where
         storage: &mut S,
         state_machine: &mut SM,
         role: &mut NodeState,
-    ) -> RaftMsg<P, L>
+    ) -> RaftMsg<P, L, C>
     where
         P: Clone,
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
         SM: StateMachine<Payload = P>,
         L: LogEntryCollection<Payload = P> + Clone,
+        C: crate::chunk_collection::ChunkCollection + Clone,
     {
         // Update term if necessary
         if term > *current_term {
@@ -138,6 +185,7 @@ where
             term: *current_term,
             success,
             match_index: storage.last_log_index(),
+            _phantom: core::marker::PhantomData,
         }
     }
 
@@ -279,6 +327,108 @@ where
 
     pub fn match_index(&self) -> &M {
         &self.match_index
+    }
+
+    /// Handle incoming InstallSnapshot RPC - returns response message
+    #[allow(clippy::too_many_arguments)]
+    pub fn handle_install_snapshot<P, L, C, S, SM>(
+        &mut self,
+        term: Term,
+        _leader_id: NodeId,
+        last_included_index: LogIndex,
+        last_included_term: Term,
+        offset: u64,
+        data: C,
+        done: bool,
+        current_term: &mut Term,
+        storage: &mut S,
+        state_machine: &mut SM,
+        role: &mut NodeState,
+    ) -> RaftMsg<P, L, C>
+    where
+        P: Clone,
+        S: Storage<Payload = P, LogEntryCollection = L, SnapshotChunk = C>,
+        L: LogEntryCollection<Payload = P> + Clone,
+        C: ChunkCollection + Clone,
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+        S::SnapshotBuilder: SnapshotBuilder<Output = S::SnapshotData, ChunkInput = C>,
+    {
+        // Reject if term is stale
+        if term < *current_term {
+            return RaftMsg::InstallSnapshotResponse {
+                term: *current_term,
+                success: false,
+            };
+        }
+
+        // Update term and convert to follower if needed
+        if term > *current_term {
+            *current_term = term;
+            storage.set_current_term(term);
+            storage.set_voted_for(None);
+            *role = NodeState::Follower;
+        }
+
+        // Check if snapshot is stale (already have more recent snapshot)
+        if let Some(current_snapshot_metadata) = storage.snapshot_metadata() {
+            if last_included_index <= current_snapshot_metadata.last_included_index {
+                return RaftMsg::InstallSnapshotResponse {
+                    term: *current_term,
+                    success: false,
+                };
+            }
+        }
+
+        // Handle chunked transfer
+        match storage.apply_snapshot_chunk(
+            offset,
+            data,
+            done,
+            last_included_index,
+            last_included_term,
+        ) {
+            Ok(_) => {
+                if done {
+                    // Snapshot completion logic
+                    if let Some(snapshot) = storage.load_snapshot() {
+                        // Restore state machine
+                        let _ = state_machine.restore_from_snapshot(&snapshot.data);
+
+                        // Discard old log entries covered by snapshot
+                        storage.discard_entries_before(last_included_index + 1);
+
+                        // Update commit/applied indices
+                        self.commit_index = self.commit_index.max(last_included_index);
+                        self.last_applied = self.last_applied.max(last_included_index);
+                    }
+                }
+
+                RaftMsg::InstallSnapshotResponse {
+                    term: *current_term,
+                    success: true,
+                }
+            }
+            Err(_) => RaftMsg::InstallSnapshotResponse {
+                term: *current_term,
+                success: false,
+            },
+        }
+    }
+
+    /// Handle InstallSnapshotResponse from follower
+    pub fn handle_install_snapshot_response(
+        &mut self,
+        peer: NodeId,
+        _term: Term,
+        success: bool,
+        last_included_index: LogIndex,
+    ) {
+        if success {
+            // Update next_index and match_index to snapshot point
+            self.next_index.insert(peer, last_included_index + 1);
+            self.match_index.insert(peer, last_included_index);
+        }
+        // On failure, next_index stays the same and leader will retry
     }
 }
 

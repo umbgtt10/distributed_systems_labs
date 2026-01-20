@@ -6,6 +6,7 @@
 
 extern crate alloc;
 
+pub mod chunk_collection;
 pub mod election_manager;
 pub mod event;
 pub mod log_entry;

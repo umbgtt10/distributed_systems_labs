@@ -36,6 +36,8 @@ impl StateMachine for InMemoryStateMachine {
             if let Some((key, value)) = command.split_once('=') {
                 self.data.insert(key.to_string(), value.to_string());
             }
+        } else {
+            self.data.insert(payload.to_string(), payload.to_string());
         }
     }
 

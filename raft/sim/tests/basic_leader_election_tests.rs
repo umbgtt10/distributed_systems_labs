@@ -10,6 +10,7 @@ use raft_sim::{
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_node_collection::InMemoryNodeCollection, timeless_test_cluster::TimelessTestCluster,
 };
+use std::marker::PhantomData;
 
 #[test]
 fn test_liveness_empty_cluster() {
@@ -145,12 +146,14 @@ fn test_liveness_election_triggered_followers_respond() {
         term: 1,
         success: true,
         match_index: 0,
+        _phantom: PhantomData,
     };
 
     let expected_heartbeat_response_from_3 = RaftMsg::AppendEntriesResponse {
         term: 1,
         success: true,
         match_index: 0,
+        _phantom: PhantomData,
     };
 
     // Act

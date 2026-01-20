@@ -1,4 +1,4 @@
-// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+﻿// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
@@ -12,6 +12,7 @@ use raft_core::{
     storage::Storage,
 };
 use raft_sim::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_node_collection::InMemoryNodeCollection,
     in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
@@ -30,12 +31,13 @@ fn test_liveness_start_election_increments_term() {
     let mut current_term = 1;
     let mut role = NodeState::Follower;
 
-    let _msg: RaftMsg<String, InMemoryLogEntryCollection> = election.start_election(
-        1, // node_id
-        &mut current_term,
-        &mut storage,
-        &mut role,
-    );
+    let _msg: RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection> = election
+        .start_election(
+            1, // node_id
+            &mut current_term,
+            &mut storage,
+            &mut role,
+        );
 
     assert_eq!(current_term, 2);
     assert_eq!(role, NodeState::Candidate);
@@ -50,7 +52,7 @@ fn test_safety_start_election_votes_for_self() {
     let mut current_term = 1;
     let mut role = NodeState::Follower;
 
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -69,7 +71,7 @@ fn test_liveness_start_election_generates_correct_message() {
     let mut current_term = 5;
     let mut role = NodeState::Follower;
 
-    let msg = election.start_election::<String, InMemoryLogEntryCollection, _>(
+    let msg = election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         42,
         &mut current_term,
         &mut storage,
@@ -105,7 +107,7 @@ fn test_safety_grant_vote_to_first_candidate() {
     let mut current_term = 1;
     let mut role = NodeState::Follower;
 
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1, // term
         5, // candidate_id
         0, // last_log_index
@@ -136,7 +138,7 @@ fn test_safety_reject_when_already_voted() {
     let mut current_term = 1;
     let mut role = NodeState::Follower;
 
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1, // term
         5, // different candidate_id
         0,
@@ -167,7 +169,7 @@ fn test_safety_grant_vote_to_same_candidate_twice() {
     let mut current_term = 1;
     let mut role = NodeState::Follower;
 
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1, // term
         5, // same candidate_id
         0,
@@ -212,7 +214,7 @@ fn test_safety_reject_less_up_to_date_candidate() {
     let mut role = NodeState::Follower;
 
     // Candidate only has 2 entries in term 2
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         2, // term
         5, // candidate_id
         2, // last_log_index (less than our 3)
@@ -254,7 +256,7 @@ fn test_safety_grant_to_equally_up_to_date_candidate() {
     let mut current_term = 2;
     let mut role = NodeState::Follower;
 
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         2,
         5,
         2, // same last_log_index
@@ -284,7 +286,7 @@ fn test_safety_update_term_from_higher_request() {
     let mut current_term = 1;
     let mut role = NodeState::Leader;
 
-    election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         5, // higher term
         7,
         0,
@@ -308,7 +310,7 @@ fn test_safety_reject_stale_vote_request() {
     let mut current_term = 5;
     let mut role = NodeState::Follower;
 
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         3, // stale term
         7,
         0,
@@ -340,7 +342,7 @@ fn test_liveness_become_leader_on_majority() {
     let mut role = NodeState::Candidate;
 
     // Start election (votes for self)
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -381,7 +383,7 @@ fn test_liveness_stay_candidate_without_majority() {
     let mut current_term = 2;
     let mut role = NodeState::Candidate;
 
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -410,7 +412,7 @@ fn test_liveness_handle_vote_rejection() {
     let mut current_term = 2;
     let mut role = NodeState::Candidate;
 
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -442,7 +444,7 @@ fn test_safety_ignore_stale_vote_response() {
     let mut current_term = 5;
     let mut role = NodeState::Candidate;
 
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -473,7 +475,7 @@ fn test_safety_step_down_on_higher_term_in_response() {
     let mut current_term = 2;
     let mut role = NodeState::Candidate;
 
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -508,7 +510,7 @@ fn test_liveness_majority_calculation_even_cluster() {
     let mut current_term = 1;
     let mut role = NodeState::Candidate;
 
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -543,7 +545,7 @@ fn test_liveness_single_node_cluster() {
     let mut current_term = 1;
     let mut role = NodeState::Candidate;
 
-    election.start_election::<String, InMemoryLogEntryCollection, _>(
+    election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -633,7 +635,7 @@ fn test_liveness_start_election_with_compacted_log() {
     assert_eq!(storage.last_log_term(), 2); // Returns snapshot term
 
     // Start election - should use snapshot metadata
-    let msg = election.start_election::<String, InMemoryLogEntryCollection, _>(
+    let msg = election.start_election::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         1,
         &mut current_term,
         &mut storage,
@@ -718,7 +720,7 @@ fn test_safety_grant_vote_with_compacted_log() {
     assert_eq!(actual_last_term, 2, "last_log_term from snapshot"); // From snapshot
 
     // Candidate has log up to index 18, term 2 (less up-to-date than our 20)
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         3,  // term
         5,  // candidate_id
         18, // last_log_index (behind our 20)
@@ -785,7 +787,7 @@ fn test_safety_reject_candidate_with_older_log_than_snapshot() {
     assert_eq!(storage.last_log_term(), 2);
 
     // Candidate only has log up to index 10, term 2 (less up-to-date)
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         3,  // term
         5,  // candidate_id
         10, // last_log_index (behind our snapshot)
@@ -849,7 +851,7 @@ fn test_safety_grant_vote_with_higher_term_than_snapshot() {
     assert_eq!(storage.last_log_term(), 2);
 
     // Candidate: index 10, term 3 (higher term wins despite shorter log)
-    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, _>(
+    let response = election.handle_vote_request::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(
         3,  // term
         5,  // candidate_id
         10, // last_log_index (shorter)

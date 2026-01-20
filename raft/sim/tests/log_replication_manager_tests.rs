@@ -1,4 +1,4 @@
-// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
+﻿// Copyright 2025 Umberto Gotti <umberto.gotti@umbertogotti.dev>
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
@@ -15,6 +15,7 @@ use raft_core::{
     storage::Storage,
 };
 use raft_sim::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
@@ -45,7 +46,7 @@ fn test_liveness_accept_entries_from_leader() {
         },
     ]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2, // term
         0, // prev_log_index
         0, // prev_log_term
@@ -83,7 +84,7 @@ fn test_safety_reject_entries_from_stale_term() {
         payload: "cmd1".to_string(),
     }]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         3, // stale term
         0, // prev_log_index
         0, // prev_log_term
@@ -121,7 +122,7 @@ fn test_safety_reject_inconsistent_prev_log() {
         payload: "cmd".to_string(),
     }]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2,
         5, // prev_log_index (we don't have this!)
         2, // prev_log_term
@@ -163,7 +164,7 @@ fn test_safety_reject_mismatched_prev_log_term() {
     }]);
 
     // Leader thinks our entry at index 1 has term 2 (but we have term 1)
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         3,
         1, // prev_log_index
         2, // prev_log_term (mismatch!)
@@ -215,7 +216,7 @@ fn test_safety_delete_conflicting_entries() {
         payload: "new_cmd2".to_string(),
     }]);
 
-    replication.handle_append_entries(
+    replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2,
         1, // prev_log_index (entry 1 matches)
         1, // prev_log_term
@@ -262,7 +263,7 @@ fn test_liveness_heartbeat_updates_commit_index() {
     // Empty AppendEntries (heartbeat) with leader_commit = 2
     let entries = InMemoryLogEntryCollection::new(&[]);
 
-    replication.handle_append_entries(
+    replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2,
         2, // prev_log_index
         2, // prev_log_term
@@ -292,7 +293,7 @@ fn test_safety_step_down_on_higher_term_append_entries() {
 
     let entries = InMemoryLogEntryCollection::new(&[]);
 
-    replication.handle_append_entries(
+    replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         5, // higher term
         0,
         0,
@@ -635,7 +636,7 @@ fn test_safety_append_entries_with_exact_match() {
         },
     ]);
 
-    replication.handle_append_entries(
+    replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2,
         0,
         0,
@@ -674,7 +675,7 @@ fn test_safety_commit_index_never_decreases() {
 
     // First set commit index to 2
     let entries = InMemoryLogEntryCollection::new(&[]);
-    replication.handle_append_entries(
+    replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2,
         2,
         2,
@@ -690,7 +691,7 @@ fn test_safety_commit_index_never_decreases() {
 
     // Leader sends heartbeat with lower commit index
     let entries2 = InMemoryLogEntryCollection::new(&[]);
-    replication.handle_append_entries(
+    replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2,
         2,
         2,
@@ -803,7 +804,7 @@ fn test_liveness_get_append_entries_with_compacted_snapshot_point() {
     replication.handle_append_entries_response(2, true, 10, &storage, &mut state_machine);
 
     // Now next_index[2] = 11, so prev_log_index will be 10
-    let msg = replication.get_append_entries_for_follower(2, 3, &storage);
+    let msg = replication.get_append_entries_for_follower::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(2, 3, &storage);
 
     match msg {
         raft_core::raft_messages::RaftMsg::AppendEntries {
@@ -875,10 +876,10 @@ fn test_safety_get_append_entries_before_snapshot_point() {
         replication.handle_append_entries_response(2, false, 0, &storage, &mut state_machine);
     }
 
-    let msg = replication.get_append_entries_for_follower(2, 3, &storage);
+    let msg = replication.get_append_entries_for_follower::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage>(2, 3, &storage);
 
     match msg {
-        raft_core::raft_messages::RaftMsg::AppendEntries {
+        RaftMsg::AppendEntries {
             term,
             prev_log_index,
             prev_log_term,
@@ -950,7 +951,7 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
         payload: "new_cmd".to_string(),
     }]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         3,              // term
         10,             // prev_log_index (compacted)
         2,              // prev_log_term
@@ -967,6 +968,7 @@ fn test_safety_follower_rejects_append_with_compacted_prev_log() {
             term,
             success,
             match_index: _,
+            ..
         } => {
             assert_eq!(term, 3);
             assert!(
@@ -1028,7 +1030,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
         payload: "cmd16".to_string(),
     }]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         3,              // term
         10,             // prev_log_index (at snapshot point)
         2,              // prev_log_term (matches snapshot)
@@ -1045,6 +1047,7 @@ fn test_liveness_follower_accepts_append_at_snapshot_point() {
             term,
             success,
             match_index,
+            ..
         } => {
             assert_eq!(term, 3);
             assert!(
@@ -1105,7 +1108,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
         payload: "cmd16".to_string(),
     }]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         3,  // term
         10, // prev_log_index (at snapshot point)
         3,  // prev_log_term (WRONG - should be 2!)
@@ -1122,6 +1125,7 @@ fn test_safety_follower_rejects_append_with_mismatched_snapshot_term() {
             term,
             success,
             match_index: _,
+            ..
         } => {
             assert_eq!(term, 3);
             assert!(
@@ -1187,7 +1191,7 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
         },
     ]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         2,  // term
         20, // prev_log_index (in follower's log)
         2,  // prev_log_term
@@ -1204,6 +1208,7 @@ fn test_liveness_both_nodes_compacted_replication_continues() {
             term,
             success,
             match_index: _,
+            ..
         } => {
             assert_eq!(term, 2);
             assert!(
@@ -1260,7 +1265,7 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
         payload: "cmd11".to_string(),
     }]);
 
-    let response = replication.handle_append_entries(
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
         3,  // term
         10, // prev_log_index
         2,  // prev_log_term (expects 2, but follower has 1)
@@ -1277,6 +1282,7 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
             term,
             success,
             match_index: _,
+            ..
         } => {
             assert_eq!(term, 3);
             assert!(
@@ -1285,5 +1291,478 @@ fn test_safety_follower_rejects_inconsistent_snapshot() {
             );
         }
         _ => panic!("Expected AppendEntriesResponse"),
+    }
+}
+
+// ===== InstallSnapshot RPC Tests =====
+
+#[test]
+fn test_liveness_leader_detects_follower_needs_snapshot() {
+    // Test: Leader's next_index for follower is before first_log_index
+    // Expected: Leader should send InstallSnapshot instead of AppendEntries
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    // Leader has entries 1-20, creates snapshot at 10, compacts to 11-20
+    let entries: Vec<LogEntry<String>> = (1..=20)
+        .map(|i| LogEntry {
+            term: 2,
+            payload: format!("cmd{}", i),
+        })
+        .collect();
+    storage.append_entries(&entries);
+
+    let mut state_machine = InMemoryStateMachine::new();
+    for i in 1..=10 {
+        state_machine.apply(&format!("cmd{}", i));
+    }
+    let snapshot_data = state_machine.create_snapshot();
+
+    let snapshot = Snapshot {
+        metadata: SnapshotMetadata {
+            last_included_index: 10,
+            last_included_term: 2,
+        },
+        data: snapshot_data,
+    };
+    storage.save_snapshot(snapshot);
+    storage.discard_entries_before(11);
+
+    // Initialize leader state with 2 peers
+    let peers = [0, 1];
+    replication.initialize_leader_state(peers.iter().copied(), &storage);
+
+    // Follower is far behind (next_index = 5, but first_log_index = 11)
+    // match index set by initialize_leader_state
+    replication.set_next_index_for_testing(0, 5);
+
+    // Get message for follower - should be InstallSnapshot
+    let message = replication.get_append_entries_for_peer(0, &storage);
+
+    match message {
+        RaftMsg::InstallSnapshot {
+            term,
+            leader_id: _,
+            last_included_index,
+            last_included_term,
+            offset,
+            data,
+            done,
+        } => {
+            assert_eq!(term, 2);
+            assert_eq!(last_included_index, 10);
+            assert_eq!(last_included_term, 2);
+            assert_eq!(offset, 0);
+            assert!(!data.to_vec().is_empty(), "Should include snapshot data");
+            assert!(done, "Should mark as done for single chunk");
+        }
+        _ => panic!("Expected InstallSnapshot, got {:?}", message),
+    }
+}
+
+#[test]
+fn test_liveness_follower_installs_snapshot_successfully() {
+    // Test: Follower receives InstallSnapshot and installs it correctly
+    // Expected: Snapshot installed, old log discarded, state machine updated
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut current_term = 2;
+    let mut role = NodeState::Follower;
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Follower has old entries 1-5, term 1 (stale)
+    let old_entries: Vec<LogEntry<String>> = (1..=5)
+        .map(|i| LogEntry {
+            term: 1,
+            payload: format!("old_cmd{}", i),
+        })
+        .collect();
+    storage.append_entries(&old_entries);
+
+    // Leader sends snapshot covering entries 1-10
+    let mut leader_state_machine = InMemoryStateMachine::new();
+    for i in 1..=10 {
+        leader_state_machine.apply(&format!("cmd{}", i));
+    }
+    let snapshot_data = leader_state_machine.create_snapshot();
+    let snapshot_bytes = snapshot_data.to_bytes().to_vec();
+
+    let response = replication.handle_install_snapshot(
+        2,  // term
+        0,  // leader_id
+        10, // last_included_index
+        2,  // last_included_term
+        0,  // offset
+        InMemoryChunkCollection::from_vec(snapshot_bytes),
+        true, // done
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    match response {
+        RaftMsg::InstallSnapshotResponse { term, success } => {
+            assert_eq!(term, 2);
+            assert!(success, "Should succeed installing snapshot");
+        }
+        _ => panic!("Expected InstallSnapshotResponse"),
+    }
+
+    // Verify snapshot was installed
+    let metadata = storage.snapshot_metadata().expect("Should have snapshot");
+    assert_eq!(metadata.last_included_index, 10);
+    assert_eq!(metadata.last_included_term, 2);
+
+    // Verify old log was discarded
+    assert_eq!(storage.first_log_index(), 11);
+
+    // Verify state machine was restored
+    assert_eq!(state_machine.get("cmd10"), Some("cmd10"));
+}
+
+#[test]
+fn test_safety_follower_rejects_stale_snapshot() {
+    // Test: Follower already has more recent snapshot than leader is sending
+    // Expected: Rejects snapshot (already applied)
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(3);
+    let mut current_term = 3;
+    let mut role = NodeState::Follower;
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Follower already has snapshot at index 15
+    for i in 1..=15 {
+        state_machine.apply(&format!("cmd{}", i));
+    }
+    let current_snapshot_data = state_machine.create_snapshot();
+
+    let current_snapshot = Snapshot {
+        metadata: SnapshotMetadata {
+            last_included_index: 15,
+            last_included_term: 3,
+        },
+        data: current_snapshot_data,
+    };
+    storage.save_snapshot(current_snapshot);
+    storage.discard_entries_before(16);
+
+    // Leader tries to send older snapshot (index 10)
+    let mut old_state_machine = InMemoryStateMachine::new();
+    for i in 1..=10 {
+        old_state_machine.apply(&format!("cmd{}", i));
+    }
+    let old_snapshot_data = old_state_machine.create_snapshot();
+    let snapshot_bytes = old_snapshot_data.to_bytes().to_vec();
+
+    let response = replication.handle_install_snapshot(
+        3,  // term
+        0,  // leader_id
+        10, // last_included_index (older than follower's 15)
+        2,  // last_included_term
+        0,  // offset
+        InMemoryChunkCollection::from_vec(snapshot_bytes),
+        true, // done
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    match response {
+        RaftMsg::InstallSnapshotResponse { term, success } => {
+            assert_eq!(term, 3);
+            assert!(!success, "Should reject stale snapshot");
+        }
+        _ => panic!("Expected InstallSnapshotResponse"),
+    }
+
+    // Verify original snapshot unchanged
+    let metadata = storage.snapshot_metadata().expect("Should have snapshot");
+    assert_eq!(metadata.last_included_index, 15);
+}
+
+#[test]
+fn test_liveness_snapshot_transfer_with_chunks() {
+    // Test: Large snapshot transferred in multiple chunks
+    // Expected: Chunks assembled correctly, snapshot installed
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut current_term = 2;
+    let mut role = NodeState::Follower;
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Create snapshot data
+    let mut leader_state_machine = InMemoryStateMachine::new();
+    for i in 1..=10 {
+        leader_state_machine.apply(&format!("cmd{}", i));
+    }
+    let snapshot_data = leader_state_machine.create_snapshot();
+    let snapshot_bytes = snapshot_data.to_bytes().to_vec();
+
+    // Split into 3 chunks
+    let chunk_size = snapshot_bytes.len() / 3;
+    let chunk1 = &snapshot_bytes[0..chunk_size];
+    let chunk2 = &snapshot_bytes[chunk_size..chunk_size * 2];
+    let chunk3 = &snapshot_bytes[chunk_size * 2..];
+
+    // Send chunk 1
+    let response1 = replication.handle_install_snapshot(
+        2,
+        0,
+        10,
+        2,
+        0,
+        InMemoryChunkCollection::from_vec(chunk1.to_vec()),
+        false, // not done
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    match response1 {
+        RaftMsg::InstallSnapshotResponse { term, success } => {
+            assert_eq!(term, 2);
+            assert!(success, "Should accept chunk 1");
+        }
+        _ => panic!("Expected InstallSnapshotResponse"),
+    }
+
+    // Send chunk 2
+    let response2 = replication.handle_install_snapshot(
+        2,
+        0,
+        10,
+        2,
+        chunk_size as u64,
+        InMemoryChunkCollection::from_vec(chunk2.to_vec()),
+        false, // not done
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    match response2 {
+        RaftMsg::InstallSnapshotResponse { term, success } => {
+            assert_eq!(term, 2);
+            assert!(success, "Should accept chunk 2");
+        }
+        _ => panic!("Expected InstallSnapshotResponse"),
+    }
+
+    // Send final chunk
+    let response3 = replication.handle_install_snapshot(
+        2,
+        0,
+        10,
+        2,
+        (chunk_size * 2) as u64,
+        InMemoryChunkCollection::from_vec(chunk3.to_vec()),
+        true, // done
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    match response3 {
+        raft_core::raft_messages::RaftMsg::InstallSnapshotResponse { term, success } => {
+            assert_eq!(term, 2);
+            assert!(success, "Should complete snapshot installation");
+        }
+        _ => panic!("Expected InstallSnapshotResponse"),
+    }
+
+    // Verify snapshot was installed
+    let metadata = storage.snapshot_metadata().expect("Should have snapshot");
+    assert_eq!(metadata.last_included_index, 10);
+    assert_eq!(metadata.last_included_term, 2);
+
+    // Verify state machine was restored
+    assert_eq!(state_machine.get("cmd10"), Some("cmd10"));
+}
+
+#[test]
+fn test_liveness_replication_resumes_after_snapshot_install() {
+    // Test: After installing snapshot, normal AppendEntries replication resumes
+    // Expected: Follower accepts new entries after snapshot
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+    let mut current_term = 2;
+    let mut role = NodeState::Follower;
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Install snapshot covering entries 1-10
+    let mut leader_state_machine = InMemoryStateMachine::new();
+    for i in 1..=10 {
+        leader_state_machine.apply(&format!("cmd{}", i));
+    }
+    let snapshot_data = leader_state_machine.create_snapshot();
+    let snapshot_bytes = snapshot_data.to_bytes().to_vec();
+
+    replication.handle_install_snapshot(
+        2,
+        0,
+        10,
+        2,
+        0,
+        InMemoryChunkCollection::from_vec(snapshot_bytes),
+        true,
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    // Now leader sends normal AppendEntries with new entries 11-12
+    let new_entries = InMemoryLogEntryCollection::new(&[
+        LogEntry {
+            term: 2,
+            payload: "cmd11".to_string(),
+        },
+        LogEntry {
+            term: 2,
+            payload: "cmd12".to_string(),
+        },
+    ]);
+
+    let response = replication.handle_append_entries::<String, InMemoryLogEntryCollection, InMemoryChunkCollection, InMemoryStorage, InMemoryStateMachine>(
+        2,  // term
+        10, // prev_log_index (at snapshot point)
+        2,  // prev_log_term
+        new_entries,
+        12,
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    match response {
+        RaftMsg::AppendEntriesResponse {
+            term,
+            success,
+            match_index,
+            ..
+        } => {
+            assert_eq!(term, 2);
+            assert!(success, "Should accept entries after snapshot");
+            assert_eq!(match_index, 12);
+        }
+        _ => panic!("Expected AppendEntriesResponse"),
+    }
+
+    // Verify entries were appended
+    assert_eq!(storage.last_log_index(), 12);
+}
+
+#[test]
+fn test_safety_follower_rejects_snapshot_from_old_term() {
+    // Test: Follower rejects snapshot from leader with older term
+    // Expected: Rejects and updates term
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(3); // Follower is on term 3
+    let mut current_term = 3;
+    let mut role = NodeState::Follower;
+    let mut state_machine = InMemoryStateMachine::new();
+
+    // Leader sends snapshot from old term 2
+    let mut old_state_machine = InMemoryStateMachine::new();
+    for i in 1..=10 {
+        old_state_machine.apply(&format!("cmd{}", i));
+    }
+    let snapshot_data = old_state_machine.create_snapshot();
+    let snapshot_bytes = snapshot_data.to_bytes().to_vec();
+
+    let response = replication.handle_install_snapshot(
+        2, // old term
+        0,
+        10,
+        2,
+        0,
+        InMemoryChunkCollection::from_vec(snapshot_bytes),
+        true,
+        &mut current_term,
+        &mut storage,
+        &mut state_machine,
+        &mut role,
+    );
+
+    match response {
+        RaftMsg::InstallSnapshotResponse { term, success } => {
+            assert_eq!(term, 3, "Should respond with current term");
+            assert!(!success, "Should reject snapshot from old term");
+        }
+        _ => panic!("Expected InstallSnapshotResponse"),
+    }
+
+    // Verify no snapshot was installed
+    assert!(storage.snapshot_metadata().is_none());
+}
+
+#[test]
+fn test_liveness_leader_updates_next_index_after_snapshot_success() {
+    // Test: Leader updates next_index after successful InstallSnapshot
+    // Expected: next_index set to last_included_index + 1
+    let mut replication = LogReplicationManager::<InMemoryMapCollection>::new();
+    let mut storage = InMemoryStorage::new();
+    storage.set_current_term(2);
+
+    // Leader has snapshot at 10
+    let entries: Vec<LogEntry<String>> = (1..=20)
+        .map(|i| LogEntry {
+            term: 2,
+            payload: format!("cmd{}", i),
+        })
+        .collect();
+    storage.append_entries(&entries);
+
+    let mut state_machine = InMemoryStateMachine::new();
+    for i in 1..=10 {
+        state_machine.apply(&format!("cmd{}", i));
+    }
+    let snapshot_data = state_machine.create_snapshot();
+
+    let snapshot = Snapshot {
+        metadata: SnapshotMetadata {
+            last_included_index: 10,
+            last_included_term: 2,
+        },
+        data: snapshot_data,
+    };
+    storage.save_snapshot(snapshot);
+    storage.discard_entries_before(11);
+
+    // Initialize leader state
+    let peers = [0, 1];
+    replication.initialize_leader_state(peers.iter().copied(), &storage);
+    // match index set by initialize_leader_state // replication.set_next_index_for_testing(0, 5); // Follower far behind
+
+    // Handle successful InstallSnapshotResponse
+    replication.handle_install_snapshot_response(
+        0,    // peer_id
+        2,    // term
+        true, // success
+        10,   // last_included_index from snapshot
+    );
+
+    // Verify next_index updated to snapshot point + 1
+    let next_msg = replication.get_append_entries_for_peer(0, &storage);
+    match next_msg {
+        RaftMsg::AppendEntries { prev_log_index, .. } => {
+            assert_eq!(
+                prev_log_index, 10,
+                "next_index should be updated to snapshot point + 1"
+            );
+        }
+        _ => panic!("Should send AppendEntries after snapshot success"),
     }
 }

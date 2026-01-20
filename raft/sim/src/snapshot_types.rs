@@ -4,6 +4,7 @@
 
 //! Snapshot types for sim - standard Vec-based implementation
 
+use crate::in_memory_chunk_collection::InMemoryChunkCollection;
 use raft_core::snapshot::{SnapshotBuildError, SnapshotBuilder, SnapshotData};
 
 /// Newtype wrapper around Vec<u8> for sim snapshots
@@ -23,6 +24,10 @@ impl SimSnapshotData {
     pub fn as_slice(&self) -> &[u8] {
         &self.0
     }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        self.0.clone()
+    }
 }
 
 impl Default for SimSnapshotData {
@@ -32,7 +37,7 @@ impl Default for SimSnapshotData {
 }
 
 impl SnapshotData for SimSnapshotData {
-    type Chunk = Vec<u8>;
+    type Chunk = InMemoryChunkCollection;
 
     fn len(&self) -> usize {
         self.0.len()
@@ -44,7 +49,9 @@ impl SnapshotData for SimSnapshotData {
         }
 
         let end = (offset + max_len).min(self.len());
-        Some(self.0[offset..end].to_vec())
+        Some(InMemoryChunkCollection::from_vec(
+            self.0[offset..end].to_vec(),
+        ))
     }
 }
 
@@ -56,7 +63,7 @@ pub struct SimSnapshotBuilder {
 
 impl SnapshotBuilder for SimSnapshotBuilder {
     type Output = SimSnapshotData;
-    type ChunkInput = Vec<u8>;
+    type ChunkInput = InMemoryChunkCollection;
 
     fn new() -> Self {
         Self {
@@ -74,7 +81,7 @@ impl SnapshotBuilder for SimSnapshotBuilder {
             return Err(SnapshotBuildError::InvalidOffset);
         }
 
-        self.data.extend_from_slice(&data);
+        self.data.extend_from_slice(data.as_slice());
         self.expected_offset += data.len();
         Ok(())
     }

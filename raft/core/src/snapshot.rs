@@ -15,7 +15,7 @@
 //! - bytes::Bytes for zero-copy networking
 //! - Custom types for specific serialization formats
 
-use crate::types::{LogIndex, Term};
+use crate::{chunk_collection::ChunkCollection, types::{LogIndex, Term}};
 
 // ============================================================
 // CORE TYPES
@@ -72,9 +72,13 @@ pub struct SnapshotChunk<D: SnapshotData> {
 ///
 /// Similar to LogEntryCollection, this enables the same Raft core
 /// to work with different snapshot implementations.
+///
+/// The Chunk type must implement ChunkCollection, ensuring that chunks
+/// can be directly used in RaftMsg::InstallSnapshot without conversion.
 pub trait SnapshotData: Clone {
     /// The type used to represent a chunk of snapshot data
-    type Chunk: Clone;
+    /// Must be a ChunkCollection for network transfer compatibility
+    type Chunk: ChunkCollection + Clone;
 
     /// Get the total size (implementation-defined units)
     fn len(&self) -> usize;

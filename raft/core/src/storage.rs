@@ -14,8 +14,8 @@ use crate::{
 pub trait Storage {
     type Payload: Clone;
     type LogEntryCollection: LogEntryCollection<Payload = Self::Payload>;
-    type SnapshotData: SnapshotData;
-    type SnapshotChunk: Clone;
+    type SnapshotData: SnapshotData<Chunk = Self::SnapshotChunk>;
+    type SnapshotChunk: crate::chunk_collection::ChunkCollection + Clone;
     type SnapshotBuilder: SnapshotBuilder<
         Output = Self::SnapshotData,
         ChunkInput = Self::SnapshotChunk,
@@ -46,6 +46,17 @@ pub trait Storage {
         offset: usize,
         max_size: usize,
     ) -> Option<SnapshotChunk<Self::SnapshotData>>;
+
+    // Chunk application
+    fn apply_snapshot_chunk(
+        &mut self,
+        offset: u64,
+        chunk: Self::SnapshotChunk,
+        done: bool,
+        last_included_index: LogIndex,
+        last_included_term: Term,
+    ) -> Result<(), SnapshotError>;
+
     fn begin_snapshot_transfer(&mut self) -> Self::SnapshotBuilder;
     fn finalize_snapshot(
         &mut self,

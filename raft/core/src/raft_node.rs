@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    chunk_collection::ChunkCollection,
     election_manager::ElectionManager,
     event::Event,
     log_entry::LogEntry,
@@ -20,17 +21,18 @@ use crate::{
     types::{LogIndex, NodeId, Term},
 };
 
-pub struct RaftNode<T, S, P, SM, C, L, M, TS, O>
+pub struct RaftNode<T, S, P, SM, C, L, CC, M, TS, O>
 where
     P: Clone,
-    T: Transport<Payload = P, LogEntries = L>,
+    T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
     S: Storage<Payload = P>,
     SM: StateMachine<Payload = P>,
     C: NodeCollection,
     L: LogEntryCollection<Payload = P>,
+    CC: ChunkCollection + Clone,
     M: MapCollection,
     TS: TimerService,
-    O: Observer<Payload = P, LogEntries = L>,
+    O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
 {
     id: NodeId,
     peers: C,
@@ -52,17 +54,18 @@ pub enum ClientError {
     NotLeader,
 }
 
-impl<T, S, P, SM, C, L, M, TS, O> RaftNode<T, S, P, SM, C, L, M, TS, O>
+impl<T, S, P, SM, C, L, CC, M, TS, O> RaftNode<T, S, P, SM, C, L, CC, M, TS, O>
 where
     P: Clone,
-    T: Transport<Payload = P, LogEntries = L>,
-    S: Storage<Payload = P, LogEntryCollection = L> + Clone,
+    T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
+    S: Storage<Payload = P, LogEntryCollection = L, SnapshotChunk = CC> + Clone,
     SM: StateMachine<Payload = P>,
     C: NodeCollection,
     L: LogEntryCollection<Payload = P> + Clone,
+    CC: ChunkCollection + Clone,
     M: MapCollection,
     TS: TimerService,
-    O: Observer<Payload = P, LogEntries = L>,
+    O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
 {
     /// Internal constructor - use RaftNodeBuilder instead
     #[allow(clippy::too_many_arguments)]
@@ -224,7 +227,7 @@ where
     // EVENT HANDLING
     // ============================================================
 
-    pub fn on_event(&mut self, event: Event<P, L>)
+    pub fn on_event(&mut self, event: Event<P, L, CC>)
     where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
         S: Storage<Payload = P, LogEntryCollection = L>,
@@ -261,7 +264,7 @@ where
         }
     }
 
-    fn handle_message(&mut self, from: NodeId, msg: RaftMsg<P, L>)
+    fn handle_message(&mut self, from: NodeId, msg: RaftMsg<P, L, CC>)
     where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
         S: Storage<Payload = P, LogEntryCollection = L>,
@@ -336,6 +339,7 @@ where
                 term,
                 success,
                 match_index,
+                _phantom: _,
             } => {
                 if term > self.current_term {
                     self.step_down(term);
@@ -360,6 +364,53 @@ where
                         if self.should_create_snapshot() {
                             let _ = self.create_snapshot_internal();
                         }
+                    }
+                }
+            }
+            RaftMsg::InstallSnapshot {
+                term,
+                leader_id,
+                last_included_index,
+                last_included_term,
+                offset,
+                data,
+                done,
+            } => {
+                // Reset election timer on valid snapshot
+                if term >= self.current_term {
+                    self.election.timer_service_mut().reset_election_timer();
+                }
+
+                let response = self.replication.handle_install_snapshot(
+                    term,
+                    leader_id,
+                    last_included_index,
+                    last_included_term,
+                    offset,
+                    data,
+                    done,
+                    &mut self.current_term,
+                    &mut self.storage,
+                    &mut self.state_machine,
+                    &mut self.role,
+                );
+                self.send(from, response);
+            }
+            RaftMsg::InstallSnapshotResponse { term, success } => {
+                if term > self.current_term {
+                    self.step_down(term);
+                    return;
+                }
+
+                if self.role == NodeState::Leader && term == self.current_term {
+                    // Get the snapshot metadata to know last_included_index
+                    if let Some(snapshot_metadata) = self.storage.snapshot_metadata() {
+                        self.replication.handle_install_snapshot_response(
+                            from,
+                            term,
+                            success,
+                            snapshot_metadata.last_included_index,
+                        );
                     }
                 }
             }
@@ -454,11 +505,11 @@ where
     // MESSAGE SENDING
     // ============================================================
 
-    fn send(&mut self, to: NodeId, msg: RaftMsg<P, L>) {
+    fn send(&mut self, to: NodeId, msg: RaftMsg<P, L, CC>) {
         self.transport.send(to, msg);
     }
 
-    fn broadcast(&mut self, msg: RaftMsg<P, L>) {
+    fn broadcast(&mut self, msg: RaftMsg<P, L, CC>) {
         // Collect peer IDs first to avoid borrowing issues
         let mut ids = C::new();
         for peer in self.peers.iter() {
@@ -485,11 +536,9 @@ where
 
         // Now send to each peer
         for peer in ids.iter() {
-            let msg = self.replication.get_append_entries_for_follower(
-                peer,
-                self.current_term,
-                &self.storage,
-            );
+            let msg = self
+                .replication
+                .get_append_entries_for_peer(peer, &self.storage);
             self.send(peer, msg);
         }
     }

@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
@@ -25,6 +26,7 @@ pub type TestNode = RaftNode<
     InMemoryStateMachine,
     InMemoryNodeCollection,
     InMemoryLogEntryCollection,
+    InMemoryChunkCollection,
     InMemoryMapCollection,
     DummyTimer,
     NullObserver<String, InMemoryLogEntryCollection>,
@@ -32,11 +34,11 @@ pub type TestNode = RaftNode<
 
 pub struct TimelessTestCluster {
     nodes: IndexMap<NodeId, TestNode>,
-    message_broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
+    message_broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection, InMemoryChunkCollection>>>,
     message_log: Vec<(
         NodeId,
         NodeId,
-        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>,
+        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>,
     )>,
     partition_groups: Option<(Vec<NodeId>, Vec<NodeId>)>,
     snapshot_threshold: u64,
@@ -186,7 +188,7 @@ impl TimelessTestCluster {
     pub fn get_messages(
         &self,
         recipient: NodeId,
-    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>> {
+    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>> {
         self.message_log
             .iter()
             .filter(|(_, to, _)| *to == recipient)
@@ -200,7 +202,7 @@ impl TimelessTestCluster {
     ) -> &[(
         NodeId,
         NodeId,
-        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>,
+        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>,
     )] {
         &self.message_log
     }
@@ -214,7 +216,7 @@ impl TimelessTestCluster {
         &self,
         from: NodeId,
         to: NodeId,
-    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>> {
+    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>> {
         self.message_log
             .iter()
             .filter(|(f, t, _)| *f == from && *t == to)

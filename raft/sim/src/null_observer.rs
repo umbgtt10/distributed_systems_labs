@@ -39,6 +39,7 @@ where
 {
     type Payload = P;
     type LogEntries = L;
+    type ChunkCollection = crate::in_memory_chunk_collection::InMemoryChunkCollection;
 
     #[inline]
     fn min_level(&self) -> EventLevel {
@@ -79,9 +80,10 @@ where
     #[inline]
     fn timer_reset(&mut self, _: NodeId, _: TimerKind, _: Term) {}
     #[inline]
-    fn message_sent(&mut self, _: NodeId, _: NodeId, _: &RaftMsg<P, L>) {}
+    fn message_sent(&mut self, _: NodeId, _: NodeId, _: &RaftMsg<P, L, Self::ChunkCollection>) {}
     #[inline]
-    fn message_received(&mut self, _: NodeId, _: NodeId, _: &RaftMsg<P, L>) {}
+    fn message_received(&mut self, _: NodeId, _: NodeId, _: &RaftMsg<P, L, Self::ChunkCollection>) {
+    }
     #[inline]
     fn higher_term_discovered(&mut self, _: NodeId, _: Term, _: Term, _: NodeId) {}
 }

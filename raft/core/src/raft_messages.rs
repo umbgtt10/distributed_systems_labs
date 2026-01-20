@@ -3,12 +3,14 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    chunk_collection::ChunkCollection,
     log_entry_collection::LogEntryCollection,
     types::{LogIndex, NodeId, Term},
 };
+use core::marker::PhantomData;
 
 #[derive(Clone, Debug, PartialEq)]
-pub enum RaftMsg<P: Clone, L: LogEntryCollection<Payload = P> + Clone> {
+pub enum RaftMsg<P: Clone, L: LogEntryCollection<Payload = P> + Clone, C: ChunkCollection + Clone> {
     RequestVote {
         term: Term,
         candidate_id: NodeId,
@@ -30,5 +32,19 @@ pub enum RaftMsg<P: Clone, L: LogEntryCollection<Payload = P> + Clone> {
         term: Term,
         success: bool,
         match_index: LogIndex,
+        _phantom: PhantomData<C>,
+    },
+    InstallSnapshot {
+        term: Term,
+        leader_id: NodeId,
+        last_included_index: LogIndex,
+        last_included_term: Term,
+        offset: u64,
+        data: C,
+        done: bool,
+    },
+    InstallSnapshotResponse {
+        term: Term,
+        success: bool,
     },
 }

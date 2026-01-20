@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    chunk_collection::ChunkCollection,
     log_entry_collection::LogEntryCollection,
     node_collection::NodeCollection,
     node_state::NodeState,
@@ -35,16 +36,17 @@ where
     }
 
     /// Start a new election - returns vote request message to broadcast
-    pub fn start_election<P, L, S>(
+    pub fn start_election<P, L, CC, S>(
         &mut self,
         node_id: NodeId,
         current_term: &mut Term,
         storage: &mut S,
         role: &mut NodeState,
-    ) -> RaftMsg<P, L>
+    ) -> RaftMsg<P, L, CC>
     where
         P: Clone,
         L: LogEntryCollection<Payload = P> + Clone,
+        CC: ChunkCollection + Clone,
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
     {
         *current_term += 1;
@@ -67,7 +69,7 @@ where
 
     /// Handle incoming vote request - returns response message
     #[allow(clippy::too_many_arguments)]
-    pub fn handle_vote_request<P, L, S>(
+    pub fn handle_vote_request<P, L, CC, S>(
         &mut self,
         term: Term,
         candidate_id: NodeId,
@@ -76,10 +78,11 @@ where
         current_term: &mut Term,
         storage: &mut S,
         role: &mut NodeState,
-    ) -> RaftMsg<P, L>
+    ) -> RaftMsg<P, L, CC>
     where
         P: Clone,
         L: LogEntryCollection<Payload = P> + Clone,
+        CC: ChunkCollection + Clone,
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
     {
         // Update term if necessary

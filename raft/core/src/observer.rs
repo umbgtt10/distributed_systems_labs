@@ -82,6 +82,9 @@ pub trait Observer {
     type LogEntries: crate::log_entry_collection::LogEntryCollection<Payload = Self::Payload>
         + Clone;
 
+    /// The collection type for snapshot chunks
+    type ChunkCollection: crate::chunk_collection::ChunkCollection + Clone;
+
     /// Get the minimum event level this observer cares about
     fn min_level(&self) -> EventLevel;
 
@@ -172,7 +175,7 @@ pub trait Observer {
         &mut self,
         from: NodeId,
         to: NodeId,
-        msg: &crate::raft_messages::RaftMsg<Self::Payload, Self::LogEntries>,
+        msg: &crate::raft_messages::RaftMsg<Self::Payload, Self::LogEntries, Self::ChunkCollection>,
     );
 
     /// Message received from peer
@@ -180,7 +183,7 @@ pub trait Observer {
         &mut self,
         to: NodeId,
         from: NodeId,
-        msg: &crate::raft_messages::RaftMsg<Self::Payload, Self::LogEntries>,
+        msg: &crate::raft_messages::RaftMsg<Self::Payload, Self::LogEntries, Self::ChunkCollection>,
     );
 
     /// Higher term discovered in message

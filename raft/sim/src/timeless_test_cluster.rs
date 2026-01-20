@@ -60,6 +60,16 @@ impl TimelessTestCluster {
         }
     }
 
+    /// Create a new cluster with N nodes already added and connected
+    pub fn with_nodes(n: usize) -> Self {
+        let mut cluster = Self::new();
+        for i in 1..=n {
+            cluster.add_node(i as NodeId);
+        }
+        cluster.connect_peers();
+        cluster
+    }
+
     /// Configure snapshot threshold for all nodes (must be called before adding nodes)
     pub fn with_snapshot_threshold(mut self, threshold: u64) -> Self {
         self.snapshot_threshold = threshold;
@@ -280,6 +290,22 @@ impl TimelessTestCluster {
 
     /// Heal the network partition
     pub fn heal_partition(&mut self) {
+        self.partition_groups = None;
+    }
+
+    /// Partition a single node from the rest of the cluster
+    pub fn partition_node(&mut self, node_id: NodeId) {
+        let other_nodes: Vec<NodeId> = self
+            .nodes
+            .keys()
+            .copied()
+            .filter(|&id| id != node_id)
+            .collect();
+        self.partition_groups = Some((vec![node_id], other_nodes));
+    }
+
+    /// Heal partition for a specific node (reconnect it to cluster)
+    pub fn heal_partition_node(&mut self, _node_id: NodeId) {
         self.partition_groups = None;
     }
 

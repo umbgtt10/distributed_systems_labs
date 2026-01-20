@@ -64,8 +64,8 @@ fn test_safety_election_log_restriction() {
     cluster.deliver_messages();
 
     // Assert - Node 3 should NOT become leader (log not up-to-date)
-    // Nodes 1 and 2 should reject the vote
-    assert_eq!(*cluster.get_node(3).role(), NodeState::Candidate);
+    // With pre-vote, Node 3 won't even pass pre-vote phase, stays Follower
+    assert_eq!(*cluster.get_node(3).role(), NodeState::Follower);
 
     // Node 2 (with complete log) attempts election
     cluster

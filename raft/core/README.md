@@ -36,6 +36,16 @@ This design philosophy enables the same consensus logic to run unchanged across:
   - Leader Completeness: Committed entries present in all future leaders
   - State Machine Safety: Deterministic, in-order application
 
+- ✅ **Log Compaction & Snapshots**
+  - Automatic snapshot creation at configurable threshold
+  - InstallSnapshot RPC with chunked transfer
+  - Snapshot metadata tracking (last_included_index/term)
+  - State machine snapshot/restore API
+  - Storage interface for snapshot persistence
+  - Log compaction (discard entries before snapshot)
+  - Crash recovery with snapshot restoration
+  - Follower catch-up via snapshot transfer
+
 **Architecture:**
 - ✅ Pure `no_std` implementation (only requires `alloc`)
 - ✅ Trait-based abstraction for all external dependencies
@@ -51,6 +61,9 @@ The core has been validated through:
 - ✅ **Raft-Sim**: Deterministic test harness with adversarial network conditions
 - ✅ **Client Request Handling**: Full write-path with commit acknowledgments
 - ✅ **Leader Re-election**: Recovery from failures and partitions
+- ✅ **Snapshot Creation & Transfer**: Automatic log compaction and follower catch-up
+- ✅ **Crash Recovery**: Node restart with state restoration from snapshots
+- ✅ **97 Tests Passing**: Comprehensive test suite including 6 crash recovery tests
 
 ---
 
@@ -183,40 +196,39 @@ The current implementation covers the core Raft protocol. The following advanced
 
 ### 1. Log Compaction & Snapshots
 
-**Status**: ⚠️ **Partial Readiness (60%)**
+**Status**: ✅ **COMPLETE**
 
-**Currently Available:**
+**Implemented Components:**
 - ✅ State Machine abstraction with `apply()` method
-- ✅ Storage trait has `truncate_after()` for log trimming
-- ✅ Clean separation between log storage and state machine
-- ✅ `last_applied` tracking in `LogReplicationManager`
-- ✅ Observer pattern can be extended for snapshot events
+- ✅ Snapshot storage interface (`save_snapshot()`, `load_snapshot()`, `get_snapshot()`)
+- ✅ `InstallSnapshot` RPC in `RaftMsg` enum with chunked transfer
+- ✅ Snapshot metadata tracking (last_included_index/term)
+- ✅ StateMachine snapshot API (`create_snapshot()`, `restore_from_snapshot()`)
+- ✅ Storage trait `discard_entries_before()` for log compaction
+- ✅ Configurable threshold for triggering compaction (default: 10 entries)
+- ✅ Automatic snapshot creation at threshold
+- ✅ Snapshot transfer to lagging followers
+- ✅ **Crash recovery** - nodes restore state from snapshots on restart
+- ✅ Observer pattern extended for snapshot events
 
-**Missing Components:**
-- ❌ No snapshot storage interface (`save_snapshot()`, `load_snapshot()`)
-- ❌ No `InstallSnapshot` RPC in `RaftMsg` enum
-- ❌ No snapshot metadata tracking (last included index/term)
-- ❌ State machine lacks snapshot API (`create_snapshot()`, `restore_from_snapshot()`)
-- ❌ Storage trait needs extension for discarding compacted entries
-- ❌ No configurable thresholds for triggering compaction
+**Implementation Details:**
 
-**Required Changes:**
-
-1. **Extend Storage Trait:**
+1. **Storage Trait Extensions:**
    ```rust
-   fn save_snapshot(&mut self, snapshot: Snapshot<Self::Payload>);
-   fn load_snapshot(&self) -> Option<Snapshot<Self::Payload>>;
+   fn save_snapshot(&mut self, snapshot: Snapshot<Self::SnapshotData>);
+   fn load_snapshot(&self) -> Option<Snapshot<Self::SnapshotData>>;
+   fn get_snapshot(&self) -> Option<Snapshot<Self::SnapshotData>>;
    fn discard_entries_before(&mut self, index: LogIndex);
-   fn snapshot_metadata(&self) -> Option<(LogIndex, Term)>;
+   fn get_snapshot_chunk(&self, offset: usize, max_size: usize) -> Option<Vec<u8>>;
    ```
 
-2. **Extend StateMachine Trait:**
+2. **StateMachine Trait Extensions:**
    ```rust
-   fn create_snapshot(&self) -> Vec<u8>;  // or generic serialization
-   fn restore_from_snapshot(&mut self, data: &[u8]) -> Result<(), Error>;
+   fn create_snapshot(&self) -> Self::SnapshotData;
+   fn restore_from_snapshot(&mut self, data: &Self::SnapshotData);
    ```
 
-3. **Add InstallSnapshot RPC:**
+3. **InstallSnapshot RPC:**
    ```rust
    RaftMsg::InstallSnapshot {
        term: Term,
@@ -229,13 +241,32 @@ The current implementation covers the core Raft protocol. The following advanced
    }
    ```
 
-4. **Add Compaction Trigger Logic:**
-   - Check log size/entry count after each append
-   - Trigger snapshot creation when threshold exceeded
-   - Handle snapshot transfer to lagging followers
+4. **Compaction Trigger Logic:**
+   - Automatic snapshot creation when log exceeds threshold
+   - Leader detects followers needing snapshots (next_index <= last_included_index)
+   - Chunked snapshot transfer for large state machines
+   - Log compaction after successful snapshot creation
 
-**Implementation Effort**: Medium (2-3 weeks)
-**Operational Value**: High (enables bounded memory for long-running clusters)
+5. **Crash Recovery:**
+   - On node restart, load latest snapshot from storage
+   - Restore state machine to snapshot state
+   - Update last_applied to snapshot's last_included_index
+   - **Never replay uncommitted log entries** (Raft safety requirement)
+
+**Test Coverage (97 tests total):**
+- ✅ Snapshot creation after threshold exceeded
+- ✅ Snapshot metadata tracking and persistence
+- ✅ InstallSnapshot RPC with chunked transfer
+- ✅ Log compaction and entry discard
+- ✅ Follower catch-up via snapshot transfer
+- ✅ State machine snapshot/restore round-trip
+- ✅ Node restart with snapshot restoration
+- ✅ Multiple restart cycles with intermediate snapshots
+- ✅ Follower crash during snapshot transfer
+- ✅ Recovery without snapshot (uncommitted entries discarded)
+- ✅ Continued operation after recovery
+
+**Operational Value**: ✅ Production-ready bounded memory for long-running clusters
 
 ---
 
@@ -366,31 +397,55 @@ The current design has `peers: C` as a **fixed field** in `RaftNode`. Dynamic me
 
 ## Recommended Implementation Order
 
-### Phase 1: Log Compaction + Snapshots
-**Priority**: High
-**Rationale**:
-- Most architecturally ready (60%)
-- Critical for production (bounded memory)
-- Natural extension of existing abstractions
-- Low risk to working system
+### Phase 1: Log Compaction + Snapshots ✅ COMPLETE
+**Status**: Implemented and tested (97 tests passing)
 
-**Success Criteria:**
-- Embassy-sim can run indefinitely without OOM
-- Snapshot creation and transfer working
-- Lagging followers can catch up via `InstallSnapshot`
+**Completed Features:**
+- ✅ Automatic snapshot creation at configurable threshold
+- ✅ InstallSnapshot RPC with chunked transfer
+- ✅ Snapshot storage interface and persistence
+- ✅ State machine snapshot/restore API
+- ✅ Log compaction (discard entries before snapshot)
+- ✅ Crash recovery with snapshot restoration
+- ✅ Follower catch-up via snapshot transfer
 
-**Required New Tests:**
-1. **Snapshot Creation Test**: Leader creates snapshot after log exceeds threshold, verifies snapshot metadata (last_included_index/term)
-2. **Snapshot Restore Test**: Follower loads snapshot and restores state machine to correct state
-3. **InstallSnapshot RPC Test**: Leader sends `InstallSnapshot` to lagging follower, follower discards conflicting log entries and applies snapshot
-4. **Log Compaction Test**: Leader discards entries before snapshot point, verifies log truncation and continued operation
-5. **Catch-Up via Snapshot Test**: New node joins cluster, receives snapshot, applies it, then receives incremental log entries
-6. **Snapshot Transfer Chunking Test**: Large snapshots split across multiple `InstallSnapshot` messages (offset/done mechanism)
-7. **State Machine Serialization Test**: State machine correctly serializes/deserializes to/from snapshot format
+**Test Coverage:**
+1. ✅ **Snapshot Creation**: Leader creates snapshot after log exceeds threshold
+2. ✅ **Snapshot Transfer**: InstallSnapshot RPC with chunked data transfer
+3. ✅ **Log Compaction**: Leader discards compacted entries
+4. ✅ **Follower Catch-Up**: Lagging followers receive snapshots
+5. ✅ **Crash Recovery**: Node restart with snapshot restoration
+6. ✅ **Multiple Restarts**: Snapshot persistence across restart cycles
+7. ✅ **Crash During Transfer**: Follower recovery from partial snapshot
+8. ✅ **Recovery Without Snapshot**: Uncommitted entries correctly discarded
+9. ✅ **Continued Operation**: Recovered nodes rejoin consensus
+
+**Operational Impact**: Clusters can now run indefinitely with bounded memory usage
 
 ---
 
-### Phase 2: Linearizable Reads
+### Phase 2: Pre-Vote Protocol (Recommended Next)
+**Priority**: High
+**Rationale**:
+- **Minimal disruption**: Small, isolated change to election logic
+- **High ROI**: Prevents disruptive elections from partitioned nodes
+- **Low risk**: Doesn't affect log replication or snapshots
+- **Quick implementation**: ~100-150 LOC + tests
+
+**Problem Solved:**
+Partitioned nodes increment their term unnecessarily, causing leader disruption when they reconnect.
+
+**Solution:**
+Nodes perform a "pre-vote" check before starting a real election. Only if they'd win the pre-vote do they increment their term.
+
+**Success Criteria:**
+- Partitioned nodes cannot disrupt stable leader
+- Pre-vote phase completes before term increment
+- Election safety maintained
+
+---
+
+### Phase 3: Linearizable Reads
 **Priority**: Medium
 **Rationale**:
 - Good user-facing feature

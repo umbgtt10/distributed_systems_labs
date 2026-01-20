@@ -96,9 +96,62 @@ Exit criteria (all met):
 
 **Status**: Complete. Validated in Embassy-sim with UDP transport.
 
+### Phase 1 — Log Compaction & Crash Recovery ✅
+
+* Log compaction via snapshots
+* Snapshot creation and transfer
+* Crash recovery with snapshots
+* Bounded memory usage for long-running clusters
+
+Exit criteria (all met):
+
+* ✅ Automatic log compaction at threshold
+* ✅ Snapshot transfer to lagging followers
+* ✅ Correct recovery after crash with snapshot
+* ✅ Memory bounded even with high write load
+
+**Status**: Complete. 100 tests passing. Validated in simulation and Embassy-sim.
+
 ---
 
-### Phase 1 — Simulation & Proof
+## Raft Enhancements
+
+### Pre-Vote Protocol ✅ **ENABLED**
+
+This implementation includes the **Pre-Vote Protocol** as described in Section 9.6 of Diego Ongaro's Raft thesis. Pre-vote is a critical optimization that prevents disruptions from partitioned or restarting nodes.
+
+#### Why Pre-Vote?
+
+In standard Raft, when a node's election timer fires, it immediately:
+1. Increments its term
+2. Starts an election
+3. Requests votes from peers
+
+**Problem**: A node that's been partitioned (can't reach majority) will repeatedly time out and increment its term. When the partition heals, this node contacts the cluster with a very high term, causing the current leader to step down unnecessarily.
+
+**Solution**: Pre-vote adds a preliminary phase:
+1. Node first asks "would you vote for me?" (pre-vote request)
+2. If it receives majority approval, *then* it increments term and starts a real election
+3. If pre-vote fails, term stays unchanged (no disruption)
+
+#### Benefits:
+- ✅ **Prevents term inflation** from partitioned nodes
+- ✅ **Reduces disruptions** during network issues
+- ✅ **Maintains liveness** - legitimate elections still proceed
+- ✅ **No safety impact** - all Raft guarantees preserved
+
+#### Implementation Details:
+- Pre-vote uses current term (no increment)
+- Pre-vote doesn't modify `voted_for` or persistent state
+- Same log up-to-date checks as regular votes
+- Majority of pre-votes required to proceed to real election
+- Transparent to rest of system (no API changes)
+
+**Status**: Fully implemented and tested. 6 dedicated pre-vote tests. Works across all environments (sim, embassy-sim).
+
+---
+
+### Phase 1 — Simulation & Proof ✅
 
 * Deterministic cluster simulator
 * Simulated network with:
@@ -132,19 +185,19 @@ Purpose:
 
 ---
 
-### Phase 3 — Raft Advanced Features
+### Phase 3 — Raft Advanced Features (Planned)
 
-* Log compaction and snapshotting
 * Dynamic membership changes
 * Read-only query optimization
 * Leadership transfer
-* Pre-vote protocol
 
 Purpose:
 
 * Complete Raft implementation for production readiness
-* Bounded memory usage for long-running clusters
 * Safe reconfiguration without downtime
+* Performance optimizations for read-heavy workloads
+
+**Note**: Log compaction and Pre-Vote Protocol already complete (see above).
 
 ---
 

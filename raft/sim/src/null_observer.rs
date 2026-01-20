@@ -58,6 +58,14 @@ where
     #[inline]
     fn election_timeout(&mut self, _: NodeId, _: Term) {}
     #[inline]
+    fn pre_vote_started(&mut self, _: NodeId, _: Term) {}
+    #[inline]
+    fn pre_vote_requested(&mut self, _: NodeId, _: NodeId, _: Term, _: LogIndex, _: Term) {}
+    #[inline]
+    fn pre_vote_granted(&mut self, _: NodeId, _: NodeId, _: bool, _: Term) {}
+    #[inline]
+    fn pre_vote_succeeded(&mut self, _: NodeId, _: Term) {}
+    #[inline]
     fn commit_advanced(&mut self, _: NodeId, _: LogIndex, _: LogIndex) {}
     #[inline]
     fn log_appended(&mut self, _: NodeId, _: usize, _: LogIndex, _: Term) {}

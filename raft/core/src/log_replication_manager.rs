@@ -101,7 +101,7 @@ where
         P: Clone,
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
         L: LogEntryCollection<Payload = P> + Clone,
-        C: crate::chunk_collection::ChunkCollection + Clone,
+        C: ChunkCollection + Clone,
     {
         let next_idx = self.next_index.get(peer).unwrap_or(1);
         let prev_log_index = next_idx.saturating_sub(1);
@@ -154,7 +154,7 @@ where
         S: Storage<Payload = P, LogEntryCollection = L> + Clone,
         SM: StateMachine<Payload = P>,
         L: LogEntryCollection<Payload = P> + Clone,
-        C: crate::chunk_collection::ChunkCollection + Clone,
+        C: ChunkCollection + Clone,
     {
         // Update term if necessary
         if term > *current_term {
@@ -162,6 +162,9 @@ where
             storage.set_current_term(term);
             *role = NodeState::Follower;
             storage.set_voted_for(None);
+        } else if term == *current_term && *role == NodeState::Candidate {
+            // Candidate receives AppendEntries from valid leader at same term - step down
+            *role = NodeState::Follower;
         }
 
         let success = if term < *current_term {

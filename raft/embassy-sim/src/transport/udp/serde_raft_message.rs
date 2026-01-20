@@ -11,7 +11,7 @@ use crate::embassy_log_collection::EmbassyLogEntryCollection;
 use crate::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use alloc::vec::Vec;
-use raft_core::{log_entry::LogEntry, raft_messages::RaftMsg};
+use raft_core::{chunk_collection::ChunkCollection, log_entry::LogEntry, raft_messages::RaftMsg};
 use serde::{Deserialize, Serialize};
 
 /// Serializable log entry for wire protocol
@@ -77,6 +77,16 @@ pub enum WireRaftMsg {
         term: u64,
         success: bool,
     },
+    PreVoteRequest {
+        term: u64,
+        candidate_id: u64,
+        last_log_index: u64,
+        last_log_term: u64,
+    },
+    PreVoteResponse {
+        term: u64,
+        vote_granted: bool,
+    },
 }
 
 impl From<RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>> for WireRaftMsg {
@@ -134,20 +144,31 @@ impl From<RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>> for
                 offset,
                 data,
                 done,
-            } => {
-                use raft_core::chunk_collection::ChunkCollection;
-                WireRaftMsg::InstallSnapshot {
-                    term,
-                    leader_id,
-                    last_included_index,
-                    last_included_term,
-                    offset,
-                    data: data.as_slice().to_vec(),
-                    done,
-                }
-            }
+            } => WireRaftMsg::InstallSnapshot {
+                term,
+                leader_id,
+                last_included_index,
+                last_included_term,
+                offset,
+                data: data.as_slice().to_vec(),
+                done,
+            },
             RaftMsg::InstallSnapshotResponse { term, success } => {
                 WireRaftMsg::InstallSnapshotResponse { term, success }
+            }
+            RaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            } => WireRaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            },
+            RaftMsg::PreVoteResponse { term, vote_granted } => {
+                WireRaftMsg::PreVoteResponse { term, vote_granted }
             }
         }
     }
@@ -224,6 +245,20 @@ impl TryFrom<WireRaftMsg> for RaftMsg<String, EmbassyLogEntryCollection, Heaples
             }
             WireRaftMsg::InstallSnapshotResponse { term, success } => {
                 Ok(RaftMsg::InstallSnapshotResponse { term, success })
+            }
+            WireRaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            } => Ok(RaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            }),
+            WireRaftMsg::PreVoteResponse { term, vote_granted } => {
+                Ok(RaftMsg::PreVoteResponse { term, vote_granted })
             }
         }
     }

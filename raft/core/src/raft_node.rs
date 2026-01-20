@@ -275,7 +275,12 @@ where
             TimerKind::Election => {
                 if self.role != NodeState::Leader {
                     self.observer.election_timeout(self.id, self.current_term);
-                    self.start_election();
+                    self.start_pre_vote();
+
+                    // If we have no peers, immediately start real election (we're the only node)
+                    if self.peers.len() == 0 {
+                        self.start_election();
+                    }
                 }
             }
             TimerKind::Heartbeat => {
@@ -292,6 +297,54 @@ where
         S: Storage<Payload = P, LogEntryCollection = L>,
     {
         match msg {
+            RaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            } => {
+                self.observer.pre_vote_requested(
+                    candidate_id,
+                    self.id,
+                    term,
+                    last_log_index,
+                    last_log_term,
+                );
+                let response = self.election.handle_pre_vote_request(
+                    term,
+                    candidate_id,
+                    last_log_index,
+                    last_log_term,
+                    self.current_term,
+                    &self.storage,
+                );
+
+                // Log the response
+                if let RaftMsg::PreVoteResponse { vote_granted, .. } = &response {
+                    self.observer
+                        .pre_vote_granted(candidate_id, self.id, *vote_granted, term);
+                }
+
+                self.send(from, response);
+            }
+
+            RaftMsg::PreVoteResponse { term, vote_granted } => {
+                // Ignore pre-vote responses from higher terms
+                if term > self.current_term {
+                    return;
+                }
+
+                let total_peers = self.peers.len();
+                let should_start_election =
+                    self.election
+                        .handle_pre_vote_response(from, vote_granted, total_peers);
+
+                if should_start_election {
+                    self.observer.pre_vote_succeeded(self.id, self.current_term);
+                    self.start_election();
+                }
+            }
+
             RaftMsg::RequestVote {
                 term,
                 candidate_id,
@@ -467,6 +520,16 @@ where
     // STATE TRANSITIONS
     // ============================================================
 
+    fn start_pre_vote(&mut self) {
+        self.observer.pre_vote_started(self.id, self.current_term);
+
+        let pre_vote_request =
+            self.election
+                .start_pre_vote(self.id, self.current_term, &self.storage);
+
+        self.broadcast(pre_vote_request);
+    }
+
     fn start_election(&mut self) {
         let old_role = self.node_state_to_role();
 
@@ -483,6 +546,11 @@ where
         self.observer.voted_for(self.id, self.id, self.current_term);
 
         self.broadcast(vote_request);
+
+        // If we have no peers, we already have majority (1 of 1) - become leader immediately
+        if self.peers.len() == 0 {
+            self.become_leader();
+        }
     }
 
     fn become_leader(&mut self) {

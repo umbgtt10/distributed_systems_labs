@@ -75,6 +75,49 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
         }
     }
 
+    fn pre_vote_started(&mut self, node: NodeId, term: Term) {
+        if self.level >= EventLevel::Info {
+            info!("Node {} started pre-vote (term {})", node, term);
+        }
+    }
+
+    fn pre_vote_requested(
+        &mut self,
+        candidate: NodeId,
+        voter: NodeId,
+        term: Term,
+        last_log_index: LogIndex,
+        last_log_term: Term,
+    ) {
+        if self.level >= EventLevel::Debug {
+            info!(
+                "Node {} pre-vote requested by {} (term {}, last_log: index={}, term={})",
+                voter, candidate, term, last_log_index, last_log_term
+            );
+        }
+    }
+
+    fn pre_vote_granted(&mut self, candidate: NodeId, voter: NodeId, granted: bool, term: Term) {
+        if self.level >= EventLevel::Debug {
+            info!(
+                "Node {} {} pre-vote to {} (term {})",
+                voter,
+                if granted { "granted" } else { "denied" },
+                candidate,
+                term
+            );
+        }
+    }
+
+    fn pre_vote_succeeded(&mut self, node: NodeId, term: Term) {
+        if self.level >= EventLevel::Info {
+            info!(
+                "Node {} pre-vote succeeded, starting real election (term {})",
+                node, term
+            );
+        }
+    }
+
     fn commit_advanced(&mut self, node: NodeId, old_index: LogIndex, new_index: LogIndex) {
         if self.level >= EventLevel::Info {
             info!(

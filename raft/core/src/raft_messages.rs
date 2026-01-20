@@ -20,6 +20,16 @@ pub enum RaftMsg<P: Clone, L: LogEntryCollection<Payload = P> + Clone, C: ChunkC
         term: Term,
         vote_granted: bool,
     },
+    PreVoteRequest {
+        term: Term,
+        candidate_id: NodeId,
+        last_log_index: LogIndex,
+        last_log_term: Term,
+    },
+    PreVoteResponse {
+        term: Term,
+        vote_granted: bool,
+    },
     AppendEntries {
         term: Term,
         prev_log_index: LogIndex,

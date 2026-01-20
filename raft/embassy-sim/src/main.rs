@@ -25,6 +25,7 @@ pub mod embassy_state_machine;
 pub mod embassy_storage;
 pub mod embassy_timer;
 pub mod heap;
+pub mod heapless_chunk_collection;
 pub mod led_state;
 pub mod time_driver;
 pub mod transport;
@@ -80,9 +81,9 @@ async fn main(spawner: Spawner) {
     info!("All commands processed!");
 
     // Run for additional time to observe replication
-    embassy_time::Timer::after(Duration::from_secs(5)).await;
+    embassy_time::Timer::after(Duration::from_secs(2)).await;
 
-    info!("5 seconds elapsed. Initiating graceful shutdown...");
+    info!("2 seconds elapsed. Initiating graceful shutdown...");
     cluster.shutdown();
 
     // Give tasks time to finish

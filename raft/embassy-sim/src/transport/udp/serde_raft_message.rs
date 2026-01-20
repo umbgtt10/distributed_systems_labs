@@ -8,9 +8,10 @@
 //! we create a mirror type that can be serialized with postcard.
 
 use crate::embassy_log_collection::EmbassyLogEntryCollection;
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use alloc::vec::Vec;
-use raft_core::{log_entry::LogEntry, raft_messages::RaftMsg};
+use raft_core::{chunk_collection::ChunkCollection, log_entry::LogEntry, raft_messages::RaftMsg};
 use serde::{Deserialize, Serialize};
 
 /// Serializable log entry for wire protocol
@@ -63,10 +64,33 @@ pub enum WireRaftMsg {
         success: bool,
         match_index: u64,
     },
+    InstallSnapshot {
+        term: u64,
+        leader_id: u64,
+        last_included_index: u64,
+        last_included_term: u64,
+        offset: u64,
+        data: Vec<u8>,
+        done: bool,
+    },
+    InstallSnapshotResponse {
+        term: u64,
+        success: bool,
+    },
+    PreVoteRequest {
+        term: u64,
+        candidate_id: u64,
+        last_log_index: u64,
+        last_log_term: u64,
+    },
+    PreVoteResponse {
+        term: u64,
+        vote_granted: bool,
+    },
 }
 
-impl From<RaftMsg<String, EmbassyLogEntryCollection>> for WireRaftMsg {
-    fn from(msg: RaftMsg<String, EmbassyLogEntryCollection>) -> Self {
+impl From<RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>> for WireRaftMsg {
+    fn from(msg: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>) -> Self {
         match msg {
             RaftMsg::RequestVote {
                 term,
@@ -112,11 +136,45 @@ impl From<RaftMsg<String, EmbassyLogEntryCollection>> for WireRaftMsg {
                 success,
                 match_index,
             },
+            RaftMsg::InstallSnapshot {
+                term,
+                leader_id,
+                last_included_index,
+                last_included_term,
+                offset,
+                data,
+                done,
+            } => WireRaftMsg::InstallSnapshot {
+                term,
+                leader_id,
+                last_included_index,
+                last_included_term,
+                offset,
+                data: data.as_slice().to_vec(),
+                done,
+            },
+            RaftMsg::InstallSnapshotResponse { term, success } => {
+                WireRaftMsg::InstallSnapshotResponse { term, success }
+            }
+            RaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            } => WireRaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            },
+            RaftMsg::PreVoteResponse { term, vote_granted } => {
+                WireRaftMsg::PreVoteResponse { term, vote_granted }
+            }
         }
     }
 }
 
-impl TryFrom<WireRaftMsg> for RaftMsg<String, EmbassyLogEntryCollection> {
+impl TryFrom<WireRaftMsg> for RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>> {
     type Error = &'static str;
 
     fn try_from(wire: WireRaftMsg) -> Result<Self, Self::Error> {
@@ -144,10 +202,8 @@ impl TryFrom<WireRaftMsg> for RaftMsg<String, EmbassyLogEntryCollection> {
                 entries,
                 leader_commit,
             } => {
-                let log_entries: Vec<LogEntry<String>> = entries
-                    .into_iter()
-                    .map(LogEntry::from)
-                    .collect();
+                let log_entries: Vec<LogEntry<String>> =
+                    entries.into_iter().map(LogEntry::from).collect();
                 let collection = EmbassyLogEntryCollection::new(&log_entries);
                 Ok(RaftMsg::AppendEntries {
                     term,
@@ -166,6 +222,44 @@ impl TryFrom<WireRaftMsg> for RaftMsg<String, EmbassyLogEntryCollection> {
                 success,
                 match_index,
             }),
+            WireRaftMsg::InstallSnapshot {
+                term,
+                leader_id,
+                last_included_index,
+                last_included_term,
+                offset,
+                data,
+                done,
+            } => {
+                use raft_core::chunk_collection::ChunkCollection;
+                let chunk = HeaplessChunkVec::<512>::new(&data);
+                Ok(RaftMsg::InstallSnapshot {
+                    term,
+                    leader_id,
+                    last_included_index,
+                    last_included_term,
+                    offset,
+                    data: chunk,
+                    done,
+                })
+            }
+            WireRaftMsg::InstallSnapshotResponse { term, success } => {
+                Ok(RaftMsg::InstallSnapshotResponse { term, success })
+            }
+            WireRaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            } => Ok(RaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            }),
+            WireRaftMsg::PreVoteResponse { term, vote_granted } => {
+                Ok(RaftMsg::PreVoteResponse { term, vote_granted })
+            }
         }
     }
 }
@@ -265,11 +359,12 @@ mod tests {
 
     #[test]
     fn test_append_entries_response_success_round_trip() {
-        let msg = RaftMsg::AppendEntriesResponse {
-            term: 5,
-            success: true,
-            match_index: 10,
-        };
+        let msg: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>> =
+            RaftMsg::AppendEntriesResponse {
+                term: 5,
+                success: true,
+                match_index: 10,
+            };
 
         let wire = WireRaftMsg::from(msg.clone());
         let bytes = postcard::to_allocvec(&wire).unwrap();

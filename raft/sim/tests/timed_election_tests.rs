@@ -83,7 +83,6 @@ fn test_liveness_split_vote_then_recovery() {
     let mut elected = false;
 
     for _ in 1..=5 {
-
         // Advance time in SMALLER steps so we catch the first timeout
         for _ in 0..15 {
             // 15 steps of 30ms = 450ms total
@@ -132,11 +131,12 @@ fn test_safety_election_timer_starts_without_messages() {
     // Advance time past election timeout
     cluster.advance_time(250);
 
-    // Even without any messages, the node should start an election
-    // (it will become Candidate and vote for itself)
+    // With pre-vote: isolated node sends pre-vote to itself (no peers)
+    // It will grant itself a pre-vote and start real election, becoming Candidate
+    // Since it has no peers, it immediately wins (majority of 1 = 1)
     assert_eq!(
         *cluster.get_node(1).role(),
-        NodeState::Candidate,
-        "Isolated node should start election after timeout"
+        NodeState::Leader,
+        "Isolated node should become leader after timeout (no peers to outvote it)"
     );
 }

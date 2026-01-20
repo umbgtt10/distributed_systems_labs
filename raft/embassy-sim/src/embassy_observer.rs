@@ -2,6 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use raft_core::log_entry_collection::LogEntryCollection;
 use raft_core::observer::{EventLevel, Observer, Role, TimerKind};
 use raft_core::raft_messages::RaftMsg;
@@ -28,6 +29,7 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> EmbassyObserver<P, L>
 impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyObserver<P, L> {
     type Payload = P;
     type LogEntries = L;
+    type ChunkCollection = HeaplessChunkVec<512>;
 
     fn min_level(&self) -> EventLevel {
         self.level
@@ -70,6 +72,49 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
     fn election_timeout(&mut self, node: NodeId, term: Term) {
         if self.level >= EventLevel::Info {
             info!("Node {} election timeout (term {})", node, term);
+        }
+    }
+
+    fn pre_vote_started(&mut self, node: NodeId, term: Term) {
+        if self.level >= EventLevel::Info {
+            info!("Node {} started pre-vote (term {})", node, term);
+        }
+    }
+
+    fn pre_vote_requested(
+        &mut self,
+        candidate: NodeId,
+        voter: NodeId,
+        term: Term,
+        last_log_index: LogIndex,
+        last_log_term: Term,
+    ) {
+        if self.level >= EventLevel::Debug {
+            info!(
+                "Node {} pre-vote requested by {} (term {}, last_log: index={}, term={})",
+                voter, candidate, term, last_log_index, last_log_term
+            );
+        }
+    }
+
+    fn pre_vote_granted(&mut self, candidate: NodeId, voter: NodeId, granted: bool, term: Term) {
+        if self.level >= EventLevel::Debug {
+            info!(
+                "Node {} {} pre-vote to {} (term {})",
+                voter,
+                if granted { "granted" } else { "denied" },
+                candidate,
+                term
+            );
+        }
+    }
+
+    fn pre_vote_succeeded(&mut self, node: NodeId, term: Term) {
+        if self.level >= EventLevel::Info {
+            info!(
+                "Node {} pre-vote succeeded, starting real election (term {})",
+                node, term
+            );
         }
     }
 
@@ -191,7 +236,7 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
         &mut self,
         from: NodeId,
         to: NodeId,
-        _msg: &RaftMsg<Self::Payload, Self::LogEntries>,
+        _msg: &RaftMsg<Self::Payload, Self::LogEntries, Self::ChunkCollection>,
     ) {
         if self.level >= EventLevel::Trace {
             info!("Node {} -> Node {}: message sent", from, to);
@@ -202,7 +247,7 @@ impl<P: Clone, L: LogEntryCollection<Payload = P> + Clone> Observer for EmbassyO
         &mut self,
         to: NodeId,
         from: NodeId,
-        _msg: &RaftMsg<Self::Payload, Self::LogEntries>,
+        _msg: &RaftMsg<Self::Payload, Self::LogEntries, Self::ChunkCollection>,
     ) {
         if self.level >= EventLevel::Trace {
             info!("Node {} <- Node {}: message received", to, from);

@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::embassy_log_collection::EmbassyLogEntryCollection;
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use crate::transport::async_transport::AsyncTransport;
 use alloc::string::String;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -15,7 +16,7 @@ use raft_core::types::NodeId;
 pub struct Envelope {
     pub from: NodeId,
     pub to: NodeId,
-    pub message: RaftMsg<String, EmbassyLogEntryCollection>,
+    pub message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
 }
 
 const CHANNEL_SIZE: usize = 32;
@@ -74,7 +75,11 @@ pub struct ChannelTransport {
 
 impl ChannelTransport {
     /// Send a message to a peer
-    pub async fn send(&self, to: NodeId, message: RaftMsg<String, EmbassyLogEntryCollection>) {
+    pub async fn send(
+        &self,
+        to: NodeId,
+        message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         // Bounds check for node IDs (1-5)
         if to == 0 || to > 5 {
             info!("Invalid target node: {}, ignoring message", to);
@@ -92,13 +97,21 @@ impl ChannelTransport {
     }
 
     /// Receive a message from any peer
-    pub async fn recv(&mut self) -> (NodeId, RaftMsg<String, EmbassyLogEntryCollection>) {
+    pub async fn recv(
+        &mut self,
+    ) -> (
+        NodeId,
+        RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         let envelope = self.rx.receive().await;
         (envelope.from, envelope.message)
     }
 
     /// Broadcast a message to all peers
-    pub async fn broadcast(&self, message: RaftMsg<String, EmbassyLogEntryCollection>) {
+    pub async fn broadcast(
+        &self,
+        message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         for peer_id in 1..=5 {
             if peer_id != self.node_id {
                 self.send(peer_id, message.clone()).await;
@@ -109,15 +122,27 @@ impl ChannelTransport {
 
 // Implement AsyncTransport trait for ChannelTransport
 impl AsyncTransport for ChannelTransport {
-    async fn send(&mut self, to: NodeId, message: RaftMsg<String, EmbassyLogEntryCollection>) {
+    async fn send(
+        &mut self,
+        to: NodeId,
+        message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         ChannelTransport::send(self, to, message).await
     }
 
-    async fn recv(&mut self) -> (NodeId, RaftMsg<String, EmbassyLogEntryCollection>) {
+    async fn recv(
+        &mut self,
+    ) -> (
+        NodeId,
+        RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         ChannelTransport::recv(self).await
     }
 
-    async fn broadcast(&mut self, message: RaftMsg<String, EmbassyLogEntryCollection>) {
+    async fn broadcast(
+        &mut self,
+        message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         ChannelTransport::broadcast(self, message).await
     }
 }

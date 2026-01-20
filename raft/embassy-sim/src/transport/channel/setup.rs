@@ -4,11 +4,12 @@
 
 use crate::cancellation_token::CancellationToken;
 use crate::cluster::RaftCluster;
+use crate::embassy_node::EmbassyNode;
 use crate::info;
+use crate::transport::channel::transport::ChannelTransportHub;
+use crate::transport::channel::ChannelTransport;
 use embassy_executor::Spawner;
 use raft_core::observer::EventLevel;
-
-use crate::transport::channel::transport::ChannelTransportHub;
 
 // --- In-Memory Channel Initialization ---
 
@@ -50,7 +51,7 @@ pub async fn initialize_cluster(
 // Channel Raft Wrapper
 #[embassy_executor::task(pool_size = 5)]
 async fn channel_raft_node_task(
-    mut node: crate::embassy_node::EmbassyNode<crate::transport::channel::ChannelTransport>,
+    mut node: EmbassyNode<ChannelTransport>,
     cancel: CancellationToken,
 ) {
     node.run(cancel).await

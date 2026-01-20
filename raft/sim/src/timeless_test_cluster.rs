@@ -2,6 +2,15 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
+use crate::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
+    in_memory_log_entry_collection::InMemoryLogEntryCollection,
+    in_memory_map_collection::InMemoryMapCollection,
+    in_memory_node_collection::InMemoryNodeCollection,
+    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
+    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
+    no_action_timer::DummyTimer, null_observer::NullObserver,
+};
 use indexmap::IndexMap;
 use raft_core::{
     election_manager::ElectionManager, event::Event,
@@ -10,15 +19,6 @@ use raft_core::{
 };
 use std::sync::{Arc, Mutex};
 
-use crate::{
-    in_memory_log_entry_collection::InMemoryLogEntryCollection,
-    in_memory_map_collection::InMemoryMapCollection,
-    in_memory_node_collection::InMemoryNodeCollection,
-    in_memory_state_machine::InMemoryStateMachine, in_memory_storage::InMemoryStorage,
-    in_memory_transport::InMemoryTransport, message_broker::MessageBroker,
-    no_action_timer::DummyTimer, null_observer::NullObserver,
-};
-
 pub type TestNode = RaftNode<
     InMemoryTransport,
     InMemoryStorage,
@@ -26,6 +26,7 @@ pub type TestNode = RaftNode<
     InMemoryStateMachine,
     InMemoryNodeCollection,
     InMemoryLogEntryCollection,
+    InMemoryChunkCollection,
     InMemoryMapCollection,
     DummyTimer,
     NullObserver<String, InMemoryLogEntryCollection>,
@@ -33,13 +34,19 @@ pub type TestNode = RaftNode<
 
 pub struct TimelessTestCluster {
     nodes: IndexMap<NodeId, TestNode>,
-    message_broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
+    message_broker:
+        Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection, InMemoryChunkCollection>>>,
     message_log: Vec<(
         NodeId,
         NodeId,
-        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>,
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
     )>,
     partition_groups: Option<(Vec<NodeId>, Vec<NodeId>)>,
+    snapshot_threshold: u64,
 }
 
 impl TimelessTestCluster {
@@ -49,7 +56,24 @@ impl TimelessTestCluster {
             message_broker: Arc::new(Mutex::new(MessageBroker::new())),
             message_log: Vec::new(),
             partition_groups: None,
+            snapshot_threshold: 10, // Default threshold
         }
+    }
+
+    /// Create a new cluster with N nodes already added and connected
+    pub fn with_nodes(n: usize) -> Self {
+        let mut cluster = Self::new();
+        for i in 1..=n {
+            cluster.add_node(i as NodeId);
+        }
+        cluster.connect_peers();
+        cluster
+    }
+
+    /// Configure snapshot threshold for all nodes (must be called before adding nodes)
+    pub fn with_snapshot_threshold(mut self, threshold: u64) -> Self {
+        self.snapshot_threshold = threshold;
+        self
     }
 
     pub fn add_node(&mut self, id: NodeId) {
@@ -60,6 +84,7 @@ impl TimelessTestCluster {
         let transport = InMemoryTransport::new(id, self.message_broker.clone());
 
         let node = RaftNodeBuilder::new(id, storage, InMemoryStateMachine::new())
+            .with_snapshot_threshold(self.snapshot_threshold)
             .with_election(ElectionManager::new(DummyTimer))
             .with_replication(LogReplicationManager::new())
             .with_transport(
@@ -116,6 +141,7 @@ impl TimelessTestCluster {
 
             // Re-create the node with updated peers
             let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
+                .with_snapshot_threshold(self.snapshot_threshold)
                 .with_election(ElectionManager::new(DummyTimer))
                 .with_replication(LogReplicationManager::new())
                 .with_transport(transport, expected_peers, NullObserver::new());
@@ -177,7 +203,13 @@ impl TimelessTestCluster {
     pub fn get_messages(
         &self,
         recipient: NodeId,
-    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>> {
+    ) -> Vec<
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
+    > {
         self.message_log
             .iter()
             .filter(|(_, to, _)| *to == recipient)
@@ -191,7 +223,11 @@ impl TimelessTestCluster {
     ) -> &[(
         NodeId,
         NodeId,
-        raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>,
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
     )] {
         &self.message_log
     }
@@ -205,7 +241,13 @@ impl TimelessTestCluster {
         &self,
         from: NodeId,
         to: NodeId,
-    ) -> Vec<raft_core::raft_messages::RaftMsg<String, InMemoryLogEntryCollection>> {
+    ) -> Vec<
+        raft_core::raft_messages::RaftMsg<
+            String,
+            InMemoryLogEntryCollection,
+            InMemoryChunkCollection,
+        >,
+    > {
         self.message_log
             .iter()
             .filter(|(f, t, _)| *f == from && *t == to)
@@ -235,6 +277,12 @@ impl TimelessTestCluster {
         self.nodes.swap_remove(&id);
     }
 
+    /// Reconnect a node to the cluster by updating peer lists
+    pub fn reconnect_node(&mut self, _id: NodeId) {
+        // Simply reconnect peers - this will update all nodes' peer lists
+        self.connect_peers();
+    }
+
     /// Partition the network into two groups
     pub fn partition(&mut self, group1: &[NodeId], group2: &[NodeId]) {
         self.partition_groups = Some((group1.to_vec(), group2.to_vec()));
@@ -242,6 +290,22 @@ impl TimelessTestCluster {
 
     /// Heal the network partition
     pub fn heal_partition(&mut self) {
+        self.partition_groups = None;
+    }
+
+    /// Partition a single node from the rest of the cluster
+    pub fn partition_node(&mut self, node_id: NodeId) {
+        let other_nodes: Vec<NodeId> = self
+            .nodes
+            .keys()
+            .copied()
+            .filter(|&id| id != node_id)
+            .collect();
+        self.partition_groups = Some((vec![node_id], other_nodes));
+    }
+
+    /// Heal partition for a specific node (reconnect it to cluster)
+    pub fn heal_partition_node(&mut self, _node_id: NodeId) {
         self.partition_groups = None;
     }
 

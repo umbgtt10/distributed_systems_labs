@@ -18,6 +18,7 @@ use crate::embassy_observer::EmbassyObserver;
 use crate::embassy_state_machine::EmbassyStateMachine;
 use crate::embassy_storage::EmbassyStorage;
 use crate::embassy_timer::EmbassyTimer;
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use crate::led_state::LedState;
 use crate::transport::async_transport::AsyncTransport;
 use crate::transport::embassy_transport::EmbassyTransport;
@@ -32,20 +33,23 @@ use raft_core::raft_node_builder::RaftNodeBuilder;
 use raft_core::timer_service::TimerService;
 use raft_core::types::{LogIndex, NodeId};
 
+type EmbassyRaftNode = RaftNode<
+    EmbassyTransport,
+    EmbassyStorage,
+    String,
+    EmbassyStateMachine,
+    EmbassyNodeCollection,
+    EmbassyLogEntryCollection,
+    HeaplessChunkVec<512>,
+    EmbassyMapCollection,
+    EmbassyTimer,
+    EmbassyObserver<String, EmbassyLogEntryCollection>,
+>;
+
 /// Embassy Raft node - encapsulates all node state and behavior
 pub struct EmbassyNode<T: AsyncTransport> {
     node_id: NodeId,
-    raft_node: RaftNode<
-        EmbassyTransport,
-        EmbassyStorage,
-        String,
-        EmbassyStateMachine,
-        EmbassyNodeCollection,
-        EmbassyLogEntryCollection,
-        EmbassyMapCollection,
-        EmbassyTimer,
-        EmbassyObserver<String, EmbassyLogEntryCollection>,
-    >,
+    raft_node: EmbassyRaftNode,
     transport: EmbassyTransport,
     async_transport: T,
     client_rx: Receiver<'static, CriticalSectionRawMutex, ClientRequest, 4>,

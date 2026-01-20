@@ -5,6 +5,7 @@
 use crate::mocked_timer_service::{MockClock, MockTimerService};
 use crate::null_observer::NullObserver;
 use crate::{
+    in_memory_chunk_collection::InMemoryChunkCollection,
     in_memory_log_entry_collection::InMemoryLogEntryCollection,
     in_memory_map_collection::InMemoryMapCollection,
     in_memory_node_collection::InMemoryNodeCollection,
@@ -26,6 +27,7 @@ type InMemoryTimefullRaftNode = RaftNode<
     InMemoryStateMachine,
     InMemoryNodeCollection,
     InMemoryLogEntryCollection,
+    InMemoryChunkCollection,
     InMemoryMapCollection,
     MockTimerService,
     NullObserver<String, InMemoryLogEntryCollection>,
@@ -33,9 +35,14 @@ type InMemoryTimefullRaftNode = RaftNode<
 
 pub struct TimefullTestCluster {
     nodes: IndexMap<NodeId, InMemoryTimefullRaftNode>,
-    broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection>>>,
-    message_log: Vec<(NodeId, NodeId, RaftMsg<String, InMemoryLogEntryCollection>)>,
+    broker: Arc<Mutex<MessageBroker<String, InMemoryLogEntryCollection, InMemoryChunkCollection>>>,
+    message_log: Vec<(
+        NodeId,
+        NodeId,
+        RaftMsg<String, InMemoryLogEntryCollection, InMemoryChunkCollection>,
+    )>,
     clock: MockClock,
+    snapshot_threshold: u64,
 }
 
 impl TimefullTestCluster {
@@ -45,7 +52,14 @@ impl TimefullTestCluster {
             broker: Arc::new(Mutex::new(MessageBroker::new())),
             message_log: Vec::new(),
             clock: MockClock::new(),
+            snapshot_threshold: 10, // Default threshold
         }
+    }
+
+    /// Configure snapshot threshold for all nodes (must be called before adding nodes)
+    pub fn with_snapshot_threshold(mut self, threshold: u64) -> Self {
+        self.snapshot_threshold = threshold;
+        self
     }
 
     pub fn get_node(&self, id: NodeId) -> &InMemoryTimefullRaftNode {
@@ -74,6 +88,7 @@ impl TimefullTestCluster {
 
         let peers = InMemoryNodeCollection::new();
         let node = RaftNodeBuilder::new(id, InMemoryStorage::new(), InMemoryStateMachine::new())
+            .with_snapshot_threshold(self.snapshot_threshold)
             .with_election(ElectionManager::new(timer))
             .with_replication(LogReplicationManager::new())
             .with_transport(transport, peers, NullObserver::new());
@@ -110,6 +125,7 @@ impl TimefullTestCluster {
 
             // Re-create the node with updated peers
             let new_node = RaftNodeBuilder::new(node_id, storage, state_machine)
+                .with_snapshot_threshold(self.snapshot_threshold)
                 .with_election(ElectionManager::new(timer))
                 .with_replication(LogReplicationManager::new())
                 .with_transport(transport, peers, NullObserver::new());

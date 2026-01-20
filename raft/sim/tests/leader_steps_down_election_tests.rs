@@ -22,18 +22,18 @@ fn test_safety_leader_steps_down_on_higher_term() {
     assert_eq!(*cluster.get_node(1).role(), NodeState::Leader);
     assert_eq!(cluster.get_node(1).current_term(), 1);
 
-    // Node 2 starts election (advances to term 2)
+    // Node 2 starts election (first pre-vote, then real election if it wins)
     cluster
         .get_node_mut(2)
         .on_event(Event::TimerFired(TimerKind::Election));
 
-    // Deliver Node 2's RequestVote to Node 1
-    cluster.deliver_message_from_to(2, 1);
+    // Deliver all messages - Node 2 will win pre-vote and start real election
+    cluster.deliver_messages();
 
-    // Assert - Node 1 steps down to Follower and updates term
+    // Assert - Node 1 steps down to Follower when it sees higher term
     assert_eq!(*cluster.get_node(1).role(), NodeState::Follower);
     assert_eq!(cluster.get_node(1).current_term(), 2);
-    assert_eq!(cluster.get_node(1).storage().voted_for(), Some(2)); // VotedFor reset
+    assert_eq!(cluster.get_node(1).storage().voted_for(), Some(2)); // Voted for node 2
 
     // Node 2 becomes leader after getting majority
     cluster.deliver_messages();

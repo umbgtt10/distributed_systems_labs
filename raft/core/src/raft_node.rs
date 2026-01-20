@@ -3,6 +3,7 @@
 // http://www.apache.org/licenses/LICENSE-2.0
 
 use crate::{
+    chunk_collection::ChunkCollection,
     election_manager::ElectionManager,
     event::Event,
     log_entry::LogEntry,
@@ -20,17 +21,18 @@ use crate::{
     types::{LogIndex, NodeId, Term},
 };
 
-pub struct RaftNode<T, S, P, SM, C, L, M, TS, O>
+pub struct RaftNode<T, S, P, SM, C, L, CC, M, TS, O>
 where
     P: Clone,
-    T: Transport<Payload = P, LogEntries = L>,
+    T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
     S: Storage<Payload = P>,
     SM: StateMachine<Payload = P>,
     C: NodeCollection,
     L: LogEntryCollection<Payload = P>,
+    CC: ChunkCollection + Clone,
     M: MapCollection,
     TS: TimerService,
-    O: Observer<Payload = P, LogEntries = L>,
+    O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
 {
     id: NodeId,
     peers: C,
@@ -40,6 +42,7 @@ where
     storage: S,
     state_machine: SM,
     observer: O,
+    snapshot_threshold: LogIndex,
 
     // Delegated responsibilities
     election: ElectionManager<C, TS>,
@@ -51,31 +54,55 @@ pub enum ClientError {
     NotLeader,
 }
 
-impl<T, S, P, SM, C, L, M, TS, O> RaftNode<T, S, P, SM, C, L, M, TS, O>
+impl<T, S, P, SM, C, L, CC, M, TS, O> RaftNode<T, S, P, SM, C, L, CC, M, TS, O>
 where
     P: Clone,
-    T: Transport<Payload = P, LogEntries = L>,
-    S: Storage<Payload = P, LogEntryCollection = L> + Clone,
+    T: Transport<Payload = P, LogEntries = L, ChunkCollection = CC>,
+    S: Storage<Payload = P, LogEntryCollection = L, SnapshotChunk = CC> + Clone,
     SM: StateMachine<Payload = P>,
     C: NodeCollection,
     L: LogEntryCollection<Payload = P> + Clone,
+    CC: ChunkCollection + Clone,
     M: MapCollection,
     TS: TimerService,
-    O: Observer<Payload = P, LogEntries = L>,
+    O: Observer<Payload = P, LogEntries = L, ChunkCollection = CC>,
 {
     /// Internal constructor - use RaftNodeBuilder instead
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn new_from_builder(
         id: NodeId,
         storage: S,
-        state_machine: SM,
+        mut state_machine: SM,
         mut election: ElectionManager<C, TS>,
-        replication: LogReplicationManager<M>,
+        mut replication: LogReplicationManager<M>,
         transport: T,
         peers: C,
         observer: O,
-    ) -> Self {
+        snapshot_threshold: LogIndex,
+    ) -> Self
+    where
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+    {
         let current_term = storage.current_term();
+
+        // CRASH RECOVERY: Restore state machine from snapshot if one exists
+        let mut last_applied = 0;
+        if let Some(snapshot) = storage.load_snapshot() {
+            // Restore state machine to snapshot state
+            let _ = state_machine.restore_from_snapshot(&snapshot.data);
+            last_applied = snapshot.metadata.last_included_index;
+
+            // Note: Storage indices are already adjusted by load_snapshot
+            // The storage implementation handles first_log_index internally
+        }
+
+        // NOTE: We do NOT replay uncommitted log entries on restart.
+        // Raft safety requires that only committed entries are applied to the state machine.
+        // After a crash, we don't know which entries were committed, so we only restore
+        // from the snapshot. Uncommitted entries will be re-replicated by the leader.
+
+        // Update replication manager's last_applied index
+        replication.set_last_applied(last_applied);
 
         // Start election timer for initial Follower state
         election.timer_service_mut().reset_election_timer();
@@ -89,6 +116,7 @@ where
             storage,
             state_machine,
             observer,
+            snapshot_threshold,
             election,
             replication,
         }
@@ -104,6 +132,10 @@ where
 
     pub fn storage(&self) -> &S {
         &self.storage
+    }
+
+    pub fn state_machine(&self) -> &SM {
+        &self.state_machine
     }
 
     pub fn current_term(&self) -> Term {
@@ -126,19 +158,102 @@ where
         }
     }
 
-    pub fn state_machine(&self) -> &SM {
-        &self.state_machine
-    }
-
     pub fn timer_service(&self) -> &TS {
         self.election.timer_service()
+    }
+
+    // ============================================================
+    // SNAPSHOT OPERATIONS
+    // ============================================================
+
+    /// Internal snapshot creation logic.
+    /// Creates snapshot of state machine and saves to storage.
+    /// Should be called automatically when log size exceeds threshold.
+    fn create_snapshot_internal(&mut self) -> Result<(), crate::snapshot::SnapshotError>
+    where
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+        S: Storage<Payload = P, LogEntryCollection = L>,
+    {
+        use crate::snapshot::{Snapshot, SnapshotMetadata};
+
+        // Only leader should create snapshots (for now)
+        if self.role != NodeState::Leader {
+            return Err(crate::snapshot::SnapshotError::NotLeader);
+        }
+
+        let last_applied = self.replication.commit_index();
+
+        if last_applied == 0 {
+            return Err(crate::snapshot::SnapshotError::NoEntriesToSnapshot);
+        }
+
+        // Get term of last applied entry
+        let last_included_term = self
+            .storage
+            .get_entry(last_applied)
+            .map(|e| e.term)
+            .ok_or(crate::snapshot::SnapshotError::EntryNotFound)?;
+
+        // Create snapshot from state machine
+        let snapshot_data = self.state_machine.create_snapshot();
+
+        let snapshot = Snapshot {
+            metadata: SnapshotMetadata {
+                last_included_index: last_applied,
+                last_included_term,
+            },
+            data: snapshot_data,
+        };
+
+        // Save to storage
+        self.storage.save_snapshot(snapshot);
+
+        // Compact the log by discarding entries up to the snapshot point
+        self.compact_log(last_applied);
+
+        Ok(())
+    }
+
+    /// Check if we should create a snapshot based on log size.
+    fn should_create_snapshot(&self) -> bool
+    where
+        S: Storage<Payload = P, LogEntryCollection = L>,
+    {
+        let commit_index = self.replication.commit_index();
+
+        // Only create snapshot if we have enough entries committed
+        if commit_index < self.snapshot_threshold {
+            return false;
+        }
+
+        // Check if we already have a snapshot at or beyond the threshold
+        // We want to snapshot at threshold, not every time commit advances
+        if let Some(snapshot) = self.storage.load_snapshot() {
+            if snapshot.metadata.last_included_index >= self.snapshot_threshold {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    /// Compact the log by discarding entries before the snapshot point.
+    fn compact_log(&mut self, last_included_index: LogIndex)
+    where
+        S: Storage<Payload = P, LogEntryCollection = L>,
+    {
+        self.storage.discard_entries_before(last_included_index + 1);
     }
 
     // ============================================================
     // EVENT HANDLING
     // ============================================================
 
-    pub fn on_event(&mut self, event: Event<P, L>) {
+    pub fn on_event(&mut self, event: Event<P, L, CC>)
+    where
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+        S: Storage<Payload = P, LogEntryCollection = L>,
+    {
         match event {
             Event::TimerFired(kind) => self.handle_timer(kind),
             Event::Message { from, msg } => self.handle_message(from, msg),
@@ -160,7 +275,12 @@ where
             TimerKind::Election => {
                 if self.role != NodeState::Leader {
                     self.observer.election_timeout(self.id, self.current_term);
-                    self.start_election();
+                    self.start_pre_vote();
+
+                    // If we have no peers, immediately start real election (we're the only node)
+                    if self.peers.len() == 0 {
+                        self.start_election();
+                    }
                 }
             }
             TimerKind::Heartbeat => {
@@ -171,8 +291,60 @@ where
         }
     }
 
-    fn handle_message(&mut self, from: NodeId, msg: RaftMsg<P, L>) {
+    fn handle_message(&mut self, from: NodeId, msg: RaftMsg<P, L, CC>)
+    where
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+        S: Storage<Payload = P, LogEntryCollection = L>,
+    {
         match msg {
+            RaftMsg::PreVoteRequest {
+                term,
+                candidate_id,
+                last_log_index,
+                last_log_term,
+            } => {
+                self.observer.pre_vote_requested(
+                    candidate_id,
+                    self.id,
+                    term,
+                    last_log_index,
+                    last_log_term,
+                );
+                let response = self.election.handle_pre_vote_request(
+                    term,
+                    candidate_id,
+                    last_log_index,
+                    last_log_term,
+                    self.current_term,
+                    &self.storage,
+                );
+
+                // Log the response
+                if let RaftMsg::PreVoteResponse { vote_granted, .. } = &response {
+                    self.observer
+                        .pre_vote_granted(candidate_id, self.id, *vote_granted, term);
+                }
+
+                self.send(from, response);
+            }
+
+            RaftMsg::PreVoteResponse { term, vote_granted } => {
+                // Ignore pre-vote responses from higher terms
+                if term > self.current_term {
+                    return;
+                }
+
+                let total_peers = self.peers.len();
+                let should_start_election =
+                    self.election
+                        .handle_pre_vote_response(from, vote_granted, total_peers);
+
+                if should_start_election {
+                    self.observer.pre_vote_succeeded(self.id, self.current_term);
+                    self.start_election();
+                }
+            }
+
             RaftMsg::RequestVote {
                 term,
                 candidate_id,
@@ -261,13 +433,69 @@ where
                     if new_commit_index > old_commit_index {
                         self.observer
                             .commit_advanced(self.id, old_commit_index, new_commit_index);
+
+                        // Check if we should create a snapshot after commit advances
+                        if self.should_create_snapshot() {
+                            let _ = self.create_snapshot_internal();
+                        }
+                    }
+                }
+            }
+            RaftMsg::InstallSnapshot {
+                term,
+                leader_id,
+                last_included_index,
+                last_included_term,
+                offset,
+                data,
+                done,
+            } => {
+                // Reset election timer on valid snapshot
+                if term >= self.current_term {
+                    self.election.timer_service_mut().reset_election_timer();
+                }
+
+                let response = self.replication.handle_install_snapshot(
+                    term,
+                    leader_id,
+                    last_included_index,
+                    last_included_term,
+                    offset,
+                    data,
+                    done,
+                    &mut self.current_term,
+                    &mut self.storage,
+                    &mut self.state_machine,
+                    &mut self.role,
+                );
+                self.send(from, response);
+            }
+            RaftMsg::InstallSnapshotResponse { term, success } => {
+                if term > self.current_term {
+                    self.step_down(term);
+                    return;
+                }
+
+                if self.role == NodeState::Leader && term == self.current_term {
+                    // Get the snapshot metadata to know last_included_index
+                    if let Some(snapshot_metadata) = self.storage.snapshot_metadata() {
+                        self.replication.handle_install_snapshot_response(
+                            from,
+                            term,
+                            success,
+                            snapshot_metadata.last_included_index,
+                        );
                     }
                 }
             }
         }
     }
 
-    pub fn submit_client_command(&mut self, payload: P) -> Result<LogIndex, ClientError> {
+    pub fn submit_client_command(&mut self, payload: P) -> Result<LogIndex, ClientError>
+    where
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+        S: Storage<Payload = P, LogEntryCollection = L>,
+    {
         if self.role != NodeState::Leader {
             return Err(ClientError::NotLeader);
         }
@@ -278,6 +506,12 @@ where
         };
         self.storage.append_entries(&[entry]);
         let index = self.storage.last_log_index();
+
+        // If we are a single node cluster, we can advance commit index immediately
+        if self.peers.len() == 0 {
+            self.replication
+                .advance_commit_index(&self.storage, &mut self.state_machine);
+        }
 
         self.send_append_entries_to_followers();
 
@@ -291,6 +525,16 @@ where
     // ============================================================
     // STATE TRANSITIONS
     // ============================================================
+
+    fn start_pre_vote(&mut self) {
+        self.observer.pre_vote_started(self.id, self.current_term);
+
+        let pre_vote_request =
+            self.election
+                .start_pre_vote(self.id, self.current_term, &self.storage);
+
+        self.broadcast(pre_vote_request);
+    }
 
     fn start_election(&mut self) {
         let old_role = self.node_state_to_role();
@@ -308,6 +552,11 @@ where
         self.observer.voted_for(self.id, self.id, self.current_term);
 
         self.broadcast(vote_request);
+
+        // If we have no peers, we already have majority (1 of 1) - become leader immediately
+        if self.peers.len() == 0 {
+            self.become_leader();
+        }
     }
 
     fn become_leader(&mut self) {
@@ -351,11 +600,11 @@ where
     // MESSAGE SENDING
     // ============================================================
 
-    fn send(&mut self, to: NodeId, msg: RaftMsg<P, L>) {
+    fn send(&mut self, to: NodeId, msg: RaftMsg<P, L, CC>) {
         self.transport.send(to, msg);
     }
 
-    fn broadcast(&mut self, msg: RaftMsg<P, L>) {
+    fn broadcast(&mut self, msg: RaftMsg<P, L, CC>) {
         // Collect peer IDs first to avoid borrowing issues
         let mut ids = C::new();
         for peer in self.peers.iter() {
@@ -382,11 +631,9 @@ where
 
         // Now send to each peer
         for peer in ids.iter() {
-            let msg = self.replication.get_append_entries_for_follower(
-                peer,
-                self.current_term,
-                &self.storage,
-            );
+            let msg = self
+                .replication
+                .get_append_entries_for_peer(peer, self.id, &self.storage);
             self.send(peer, msg);
         }
     }

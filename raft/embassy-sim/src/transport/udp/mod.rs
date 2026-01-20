@@ -4,6 +4,6 @@
 
 pub mod config;
 pub mod driver;
-pub mod serde;
+pub mod serde_raft_message;
 pub mod setup;
 pub mod transport;

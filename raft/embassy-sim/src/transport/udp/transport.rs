@@ -5,8 +5,9 @@
 //! UDP transport using embassy-net (no_std)
 
 use crate::embassy_log_collection::EmbassyLogEntryCollection;
+use crate::heapless_chunk_collection::HeaplessChunkVec;
 use crate::transport::async_transport::AsyncTransport;
-use crate::transport::udp::serde::WireRaftMsg;
+use crate::transport::udp::serde_raft_message::WireRaftMsg;
 use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
@@ -23,19 +24,28 @@ const CHANNEL_SIZE: usize = 64;
 
 pub type RaftChannel = Channel<
     CriticalSectionRawMutex,
-    (NodeId, RaftMsg<String, EmbassyLogEntryCollection>),
+    (
+        NodeId,
+        RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ),
     CHANNEL_SIZE,
 >;
 pub type RaftReceiver = Receiver<
     'static,
     CriticalSectionRawMutex,
-    (NodeId, RaftMsg<String, EmbassyLogEntryCollection>),
+    (
+        NodeId,
+        RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ),
     CHANNEL_SIZE,
 >;
 pub type RaftSender = Sender<
     'static,
     CriticalSectionRawMutex,
-    (NodeId, RaftMsg<String, EmbassyLogEntryCollection>),
+    (
+        NodeId,
+        RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ),
     CHANNEL_SIZE,
 >;
 
@@ -66,19 +76,31 @@ impl UdpTransport {
 }
 
 impl AsyncTransport for UdpTransport {
-    async fn send(&mut self, to: NodeId, message: RaftMsg<String, EmbassyLogEntryCollection>) {
+    async fn send(
+        &mut self,
+        to: NodeId,
+        message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         // Send to the sender task via channel
         if self.sender.try_send((to, message)).is_err() {
             info!("Node {} outgoing packet dropped (queue full)", self.node_id);
         }
     }
 
-    async fn recv(&mut self) -> (NodeId, RaftMsg<String, EmbassyLogEntryCollection>) {
+    async fn recv(
+        &mut self,
+    ) -> (
+        NodeId,
+        RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         // Simply read from the channel (listener task handles the socket)
         self.receiver.receive().await
     }
 
-    async fn broadcast(&mut self, message: RaftMsg<String, EmbassyLogEntryCollection>) {
+    async fn broadcast(
+        &mut self,
+        message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>>,
+    ) {
         for peer_id in 1..=5 {
             if peer_id != self.node_id {
                 self.send(peer_id, message.clone()).await;
@@ -155,12 +177,8 @@ pub async fn run_udp_sender(
 
         let target_addr = peer_addrs[(to - 1) as usize];
 
-        // crate::info!("Node {} sending to {} via UDP", node_id, to);
-
         if let Err(e) = socket.send_to(&bytes, target_addr).await {
             info!("Node {} failed to send UDP packet: {:?}", node_id, e);
-        } else {
-            // crate::info!("Node {} sent {} bytes to {}", node_id, bytes.len(), to);
         }
     }
 }
@@ -200,8 +218,8 @@ pub async fn run_udp_listener(
                 // Deserialize envelope
                 let envelope: Envelope = match postcard::from_bytes(&buf[..len]) {
                     Ok(env) => env,
-                    Err(_) => {
-                        info!("Node {} failed to deserialize envelope", node_id);
+                    Err(e) => {
+                        info!("Node {} failed to deserialize envelope: {:?}", node_id, e);
                         continue;
                     }
                 };
@@ -209,21 +227,24 @@ pub async fn run_udp_listener(
                 // Deserialize wire message
                 let wire_msg: WireRaftMsg = match postcard::from_bytes(&envelope.message_bytes) {
                     Ok(msg) => msg,
-                    Err(_) => {
-                        info!("Node {} failed to deserialize wire message", node_id);
+                    Err(e) => {
+                        info!(
+                            "Node {} failed to deserialize wire message: {:?}",
+                            node_id, e
+                        );
                         continue;
                     }
                 };
 
                 // Convert to RaftMsg
-                let message: RaftMsg<String, EmbassyLogEntryCollection> = match wire_msg.try_into()
-                {
-                    Ok(msg) => msg,
-                    Err(_) => {
-                        info!("Node {} failed to convert wire message", node_id);
-                        continue;
-                    }
-                };
+                let message: RaftMsg<String, EmbassyLogEntryCollection, HeaplessChunkVec<512>> =
+                    match wire_msg.try_into() {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            info!("Node {} failed to convert wire message: {:?}", node_id, e);
+                            continue;
+                        }
+                    };
 
                 // Push to channel (drop if full)
                 if sender.try_send((envelope.from, message)).is_err() {

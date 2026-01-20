@@ -96,9 +96,62 @@ Exit criteria (all met):
 
 **Status**: Complete. Validated in Embassy-sim with UDP transport.
 
+### Phase 1 — Log Compaction & Crash Recovery ✅
+
+* Log compaction via snapshots
+* Snapshot creation and transfer
+* Crash recovery with snapshots
+* Bounded memory usage for long-running clusters
+
+Exit criteria (all met):
+
+* ✅ Automatic log compaction at threshold
+* ✅ Snapshot transfer to lagging followers
+* ✅ Correct recovery after crash with snapshot
+* ✅ Memory bounded even with high write load
+
+**Status**: Complete. 100 tests passing. Validated in simulation and Embassy-sim.
+
 ---
 
-### Phase 1 — Simulation & Proof
+## Raft Enhancements
+
+### Pre-Vote Protocol ✅ **ENABLED**
+
+This implementation includes the **Pre-Vote Protocol** as described in Section 9.6 of Diego Ongaro's Raft thesis. Pre-vote is a critical optimization that prevents disruptions from partitioned or restarting nodes.
+
+#### Why Pre-Vote?
+
+In standard Raft, when a node's election timer fires, it immediately:
+1. Increments its term
+2. Starts an election
+3. Requests votes from peers
+
+**Problem**: A node that's been partitioned (can't reach majority) will repeatedly time out and increment its term. When the partition heals, this node contacts the cluster with a very high term, causing the current leader to step down unnecessarily.
+
+**Solution**: Pre-vote adds a preliminary phase:
+1. Node first asks "would you vote for me?" (pre-vote request)
+2. If it receives majority approval, *then* it increments term and starts a real election
+3. If pre-vote fails, term stays unchanged (no disruption)
+
+#### Benefits:
+- ✅ **Prevents term inflation** from partitioned nodes
+- ✅ **Reduces disruptions** during network issues
+- ✅ **Maintains liveness** - legitimate elections still proceed
+- ✅ **No safety impact** - all Raft guarantees preserved
+
+#### Implementation Details:
+- Pre-vote uses current term (no increment)
+- Pre-vote doesn't modify `voted_for` or persistent state
+- Same log up-to-date checks as regular votes
+- Majority of pre-votes required to proceed to real election
+- Transparent to rest of system (no API changes)
+
+**Status**: Fully implemented and tested. 6 dedicated pre-vote tests. Works across all environments (sim, embassy-sim).
+
+---
+
+### Phase 1 — Simulation & Proof ✅
 
 * Deterministic cluster simulator
 * Simulated network with:
@@ -132,19 +185,19 @@ Purpose:
 
 ---
 
-### Phase 3 — Raft Advanced Features
+### Phase 3 — Raft Advanced Features (Planned)
 
-* Log compaction and snapshotting
 * Dynamic membership changes
 * Read-only query optimization
 * Leadership transfer
-* Pre-vote protocol
 
 Purpose:
 
 * Complete Raft implementation for production readiness
-* Bounded memory usage for long-running clusters
 * Safe reconfiguration without downtime
+* Performance optimizations for read-heavy workloads
+
+**Note**: Log compaction and Pre-Vote Protocol already complete (see above).
 
 ---
 
@@ -183,15 +236,33 @@ The test harness is treated as a **formal contract**.
 
 ---
 
-## Advanced Raft Features (To Be Implemented)
+## TODO: Advanced Raft Features & Documentation
 
-The current implementation covers the core Raft protocol. The following advanced features remain to be implemented:
+### Algorithmic Features (To Be Implemented)
 
-- 🔲 **Log Compaction/Snapshotting**: Bounded memory usage for long-running clusters
-- 🔲 **Dynamic Membership**: Adding/removing nodes from the cluster
-- 🔲 **Read-Only Queries**: Linearizable reads without log entries
+- 🔲 **Dynamic Membership**: Adding/removing nodes from the cluster (Joint Consensus or Single-Server Changes)
+- 🔲 **Read-Only Queries**: Linearizable reads without log entries (leader leases)
 - 🔲 **Leadership Transfer**: Graceful handoff for maintenance
-- 🔲 **Pre-vote Protocol**: Prevent disruptions from partitioned nodes
+
+### Architectural Decision Records (To Be Documented)
+
+#### High Priority
+- 🔲 **ADR-R11: Storage Durability Guarantees** - Fsync policy, WAL vs direct writes, durability/throughput tradeoffs
+- 🔲 **ADR-R13: Transport Abstraction Design** - Why async-agnostic, message delivery guarantees, timeout handling
+- 🔲 **ADR-R14: Error Propagation Strategy** - Panic vs Result, storage failure handling, network retry policies
+- 🔲 **ADR-R16: Configuration Management** - Static vs dynamic config, election timeout tuning, snapshot threshold policy
+- 🔲 **ADR-R19: Security Boundary Definition** - Trusted network assumption, TLS/auth in runtime layer, no BFT
+
+#### Medium Priority
+- 🔲 **ADR-R9: Observer Pattern for Instrumentation** - Trait-based observers, observable events, separation of concerns
+- 🔲 **ADR-R10: Zero-Cost Abstractions for Telemetry** - Zero-overhead observability in `no_std`, Prometheus integration
+- 🔲 **ADR-R12: Serialization Strategy** - Wire format choice, backward compatibility, schema evolution
+- 🔲 **ADR-R17: Multi-Environment Realization Strategy** - Why Embassy sim exists, path to production, adapter responsibilities
+
+#### Lower Priority
+- 🔲 **ADR-R15: Deterministic Testing Philosophy** - Imperative vs property-based tests, chaos testing, soak tests
+- 🔲 **ADR-R18: Memory Bounds & Resource Limits** - Max log size, message size limits, connection limits
+- 🔲 **ADR-R20: Client Request Semantics** - Submit returns index not result, NotLeader retries, linearizability guarantees
 
 ---
 

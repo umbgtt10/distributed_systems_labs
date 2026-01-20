@@ -101,6 +101,20 @@ fn test_liveness_election_triggered_followers_respond() {
     cluster.add_node(3);
     cluster.connect_peers();
 
+    let expected_pre_vote_request_to_2 = RaftMsg::PreVoteRequest {
+        term: 0,
+        candidate_id: 1,
+        last_log_index: 0,
+        last_log_term: 0,
+    };
+
+    let expected_pre_vote_request_to_3 = RaftMsg::PreVoteRequest {
+        term: 0,
+        candidate_id: 1,
+        last_log_index: 0,
+        last_log_term: 0,
+    };
+
     let expected_vote_request_to_2 = RaftMsg::RequestVote {
         term: 1,
         candidate_id: 1,
@@ -129,6 +143,16 @@ fn test_liveness_election_triggered_followers_respond() {
         prev_log_term: 0,
         entries: InMemoryLogEntryCollection::new(&[]),
         leader_commit: 0,
+    };
+
+    let expected_pre_vote_response_from_2 = RaftMsg::PreVoteResponse {
+        term: 0,
+        vote_granted: true,
+    };
+
+    let expected_pre_vote_response_from_3 = RaftMsg::PreVoteResponse {
+        term: 0,
+        vote_granted: true,
     };
 
     let expected_vote_response_from_2 = RaftMsg::RequestVoteResponse {
@@ -160,22 +184,32 @@ fn test_liveness_election_triggered_followers_respond() {
 
     cluster.deliver_messages();
 
-    // Assert - Node 2 receives vote request AND heartbeat (leader sends heartbeat immediately)
+    // Assert - Node 2 receives pre-vote request, vote request AND heartbeat (leader sends heartbeat immediately)
     assert_eq!(
         cluster.get_messages(2),
-        vec![expected_vote_request_to_2, expected_heartbeat_to_2]
+        vec![
+            expected_pre_vote_request_to_2,
+            expected_vote_request_to_2,
+            expected_heartbeat_to_2
+        ]
     );
 
-    // Assert - Node 3 receives vote request AND heartbeat
+    // Assert - Node 3 receives pre-vote request, vote request AND heartbeat
     assert_eq!(
         cluster.get_messages(3),
-        vec![expected_vote_request_to_3, expected_heartbeat_to_3]
+        vec![
+            expected_pre_vote_request_to_3,
+            expected_vote_request_to_3,
+            expected_heartbeat_to_3
+        ]
     );
 
-    // Assert - Node 1 receives vote responses AND heartbeat responses
+    // Assert - Node 1 receives pre-vote responses, vote responses AND heartbeat responses
     assert_eq!(
         cluster.get_messages(1),
         vec![
+            expected_pre_vote_response_from_2,
+            expected_pre_vote_response_from_3,
             expected_vote_response_from_2,
             expected_vote_response_from_3,
             expected_heartbeat_response_from_2,

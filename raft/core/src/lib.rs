@@ -16,6 +16,7 @@ pub mod log_entry;
 pub mod log_entry_collection;
 pub mod log_replication_manager;
 pub mod map_collection;
+pub mod message_handler;
 pub mod node_collection;
 pub mod node_state;
 pub mod observer;

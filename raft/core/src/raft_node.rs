@@ -16,6 +16,7 @@ use crate::{
     node_state::NodeState,
     observer::{Observer, Role, TimerKind as ObserverTimerKind},
     raft_messages::RaftMsg,
+    snapshot_manager::SnapshotManager,
     state_machine::StateMachine,
     storage::Storage,
     timer_service::{TimerKind, TimerService},
@@ -44,12 +45,12 @@ where
     storage: S,
     state_machine: SM,
     observer: O,
-    snapshot_threshold: LogIndex,
 
     // Delegated responsibilities
     election: ElectionManager<C, TS>,
     replication: LogReplicationManager<M>,
     config_manager: ConfigChangeManager<C, M>,
+    snapshot_manager: SnapshotManager,
 
     _phantom: core::marker::PhantomData<CCC>,
 }
@@ -115,6 +116,7 @@ where
 
         let config_manager =
             ConfigChangeManager::new(crate::configuration::Configuration::new(peers));
+        let snapshot_manager = SnapshotManager::new(snapshot_threshold);
 
         RaftNode {
             id,
@@ -124,10 +126,10 @@ where
             storage,
             state_machine,
             observer,
-            snapshot_threshold,
             election,
             replication,
             config_manager,
+            snapshot_manager,
             _phantom: core::marker::PhantomData,
         }
     }
@@ -309,8 +311,6 @@ where
         SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
         S: Storage<Payload = P, LogEntryCollection = L>,
     {
-        use crate::snapshot::{Snapshot, SnapshotMetadata};
-
         // Only leader should create snapshots (for now)
         if self.role != NodeState::Leader {
             return Err(crate::snapshot::SnapshotError::NotLeader);
@@ -318,33 +318,8 @@ where
 
         let last_applied = self.replication.commit_index();
 
-        if last_applied == 0 {
-            return Err(crate::snapshot::SnapshotError::NoEntriesToSnapshot);
-        }
-
-        // Get term of last applied entry
-        let last_included_term = self
-            .storage
-            .get_entry(last_applied)
-            .map(|e| e.term)
-            .ok_or(crate::snapshot::SnapshotError::EntryNotFound)?;
-
-        // Create snapshot from state machine
-        let snapshot_data = self.state_machine.create_snapshot();
-
-        let snapshot = Snapshot {
-            metadata: SnapshotMetadata {
-                last_included_index: last_applied,
-                last_included_term,
-            },
-            data: snapshot_data,
-        };
-
-        // Save to storage
-        self.storage.save_snapshot(snapshot);
-
-        // Compact the log by discarding entries up to the snapshot point
-        self.compact_log(last_applied);
+        self.snapshot_manager
+            .create(&mut self.storage, &mut self.state_machine, last_applied)?;
 
         Ok(())
     }
@@ -355,29 +330,8 @@ where
         S: Storage<Payload = P, LogEntryCollection = L>,
     {
         let commit_index = self.replication.commit_index();
-
-        // Only create snapshot if we have enough entries committed
-        if commit_index < self.snapshot_threshold {
-            return false;
-        }
-
-        // Check if we already have a snapshot at or beyond the threshold
-        // We want to snapshot at threshold, not every time commit advances
-        if let Some(snapshot) = self.storage.load_snapshot() {
-            if snapshot.metadata.last_included_index >= self.snapshot_threshold {
-                return false;
-            }
-        }
-
-        true
-    }
-
-    /// Compact the log by discarding entries before the snapshot point.
-    fn compact_log(&mut self, last_included_index: LogIndex)
-    where
-        S: Storage<Payload = P, LogEntryCollection = L>,
-    {
-        self.storage.discard_entries_before(last_included_index + 1);
+        self.snapshot_manager
+            .should_create(commit_index, &self.storage)
     }
 
     fn submit_config_change(&mut self, change: ConfigurationChange) -> Result<LogIndex, ClientError>

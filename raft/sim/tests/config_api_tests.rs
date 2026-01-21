@@ -2,7 +2,9 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use raft_core::{event::Event, raft_node::ConfigError, storage::Storage, timer_service::TimerKind};
+use raft_core::{
+    config_change_manager::ConfigError, event::Event, storage::Storage, timer_service::TimerKind,
+};
 use raft_sim::timeless_test_cluster::TimelessTestCluster;
 
 #[test]

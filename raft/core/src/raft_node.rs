@@ -5,7 +5,7 @@
 use crate::{
     chunk_collection::ChunkCollection,
     config_change_collection::ConfigChangeCollection,
-    configuration::Configuration,
+    config_change_manager::{ConfigChangeManager, ConfigError},
     election_manager::ElectionManager,
     event::Event,
     log_entry::{ConfigurationChange, EntryType, LogEntry},
@@ -38,7 +38,6 @@ where
     CCC: ConfigChangeCollection,
 {
     id: NodeId,
-    config: Configuration<C>,
     role: NodeState,
     current_term: Term,
     transport: T,
@@ -50,9 +49,7 @@ where
     // Delegated responsibilities
     election: ElectionManager<C, TS>,
     replication: LogReplicationManager<M>,
-
-    // Configuration change tracking
-    pending_config_change: Option<LogIndex>,
+    config_manager: ConfigChangeManager<C, M>,
 
     _phantom: core::marker::PhantomData<CCC>,
 }
@@ -60,15 +57,6 @@ where
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClientError {
     NotLeader,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ConfigError {
-    NotLeader,
-    ConfigChangeInProgress,
-    NodeAlreadyExists,
-    NodeNotFound,
-    CannotRemoveLastNode,
 }
 
 impl<T, S, P, SM, C, L, CC, M, TS, O, CCC> RaftNode<T, S, P, SM, C, L, CC, M, TS, O, CCC>
@@ -125,9 +113,11 @@ where
         // Start election timer for initial Follower state
         election.timer_service_mut().reset_election_timer();
 
+        let config_manager =
+            ConfigChangeManager::new(crate::configuration::Configuration::new(peers));
+
         RaftNode {
             id,
-            config: Configuration::new(peers),
             role: NodeState::Follower,
             current_term,
             transport,
@@ -137,7 +127,7 @@ where
             snapshot_threshold,
             election,
             replication,
-            pending_config_change: None,
+            config_manager,
             _phantom: core::marker::PhantomData,
         }
     }
@@ -171,10 +161,10 @@ where
     }
 
     pub fn peers(&self) -> Option<&C> {
-        if self.config.members.is_empty() {
+        if self.config_manager.config().members.is_empty() {
             None
         } else {
-            Some(&self.config.members)
+            Some(&self.config_manager.config().members)
         }
     }
 
@@ -182,8 +172,8 @@ where
         self.election.timer_service()
     }
 
-    pub fn config(&self) -> &Configuration<C> {
-        &self.config
+    pub fn config(&self) -> &crate::configuration::Configuration<C> {
+        self.config_manager.config()
     }
 
     pub fn is_committed(&self, index: LogIndex) -> bool {
@@ -226,31 +216,21 @@ where
         S: Storage<Payload = P, LogEntryCollection = L>,
         C: NodeCollection,
     {
-        // Check if we're the leader
-        if self.role != NodeState::Leader {
-            return Err(ConfigError::NotLeader);
-        }
+        let is_leader = self.role == NodeState::Leader;
+        let commit_index = self.replication.commit_index();
 
-        // Check if there's already a config change in progress
-        if let Some(pending_index) = self.pending_config_change {
-            if !self.is_committed(pending_index) {
-                return Err(ConfigError::ConfigChangeInProgress);
-            }
-        }
+        // Validate and get the configuration change
+        let change = self
+            .config_manager
+            .add_server(node_id, self.id, is_leader, commit_index)?;
 
-        // Check if node already exists in configuration
-        if node_id == self.id || self.config.contains(node_id) {
-            return Err(ConfigError::NodeAlreadyExists);
-        }
-
-        // Submit the configuration change
-        let change = ConfigurationChange::AddServer(node_id);
+        // Submit the change
         let index = self
             .submit_config_change(change)
             .map_err(|_| ConfigError::NotLeader)?;
 
-        // Track pending config change
-        self.pending_config_change = Some(index);
+        // Track the pending change
+        self.config_manager.track_pending_change(index);
 
         Ok(index)
     }
@@ -271,36 +251,21 @@ where
         S: Storage<Payload = P, LogEntryCollection = L>,
         C: NodeCollection,
     {
-        // Check if we're the leader
-        if self.role != NodeState::Leader {
-            return Err(ConfigError::NotLeader);
-        }
+        let is_leader = self.role == NodeState::Leader;
+        let commit_index = self.replication.commit_index();
 
-        // Check if there's already a config change in progress
-        if let Some(pending_index) = self.pending_config_change {
-            if !self.is_committed(pending_index) {
-                return Err(ConfigError::ConfigChangeInProgress);
-            }
-        }
+        // Validate and get the configuration change
+        let change =
+            self.config_manager
+                .remove_server(node_id, self.id, is_leader, commit_index)?;
 
-        // Check if this would leave the cluster empty
-        if self.config.size() == 1 {
-            return Err(ConfigError::CannotRemoveLastNode);
-        }
-
-        // Check if node exists in configuration (including self)
-        if node_id != self.id && !self.config.contains(node_id) {
-            return Err(ConfigError::NodeNotFound);
-        }
-
-        // Submit the configuration change
-        let change = ConfigurationChange::RemoveServer(node_id);
+        // Submit the change
         let index = self
             .submit_config_change(change)
             .map_err(|_| ConfigError::NotLeader)?;
 
-        // Track pending config change
-        self.pending_config_change = Some(index);
+        // Track the pending change
+        self.config_manager.track_pending_change(index);
 
         Ok(index)
     }
@@ -322,11 +287,11 @@ where
         let index = self.storage.last_log_index();
 
         // If we are a single node cluster, we can advance commit index immediately
-        if self.config.members.len() == 0 {
+        if self.config_manager.config().members.len() == 0 {
             let config_changes: CCC = self.replication.advance_commit_index(
                 &self.storage,
                 &mut self.state_machine,
-                &self.config,
+                self.config_manager.config(),
             );
             self.apply_config_changes(config_changes);
         }
@@ -432,11 +397,11 @@ where
         let index = self.storage.last_log_index();
 
         // If we are a single node cluster, we can advance commit index immediately
-        if self.config.members.len() == 0 {
+        if self.config_manager.config().members.len() == 0 {
             let config_changes: CCC = self.replication.advance_commit_index(
                 &self.storage,
                 &mut self.state_machine,
-                &self.config,
+                self.config_manager.config(),
             );
             self.apply_config_changes(config_changes);
         }
@@ -461,7 +426,7 @@ where
                     self.start_pre_vote();
 
                     // If we have no peers, immediately start real election (we're the only node)
-                    if self.config.members.len() == 0 {
+                    if self.config_manager.config().members.len() == 0 {
                         self.start_election();
                     }
                 }
@@ -517,9 +482,11 @@ where
                     return;
                 }
 
-                let should_start_election =
-                    self.election
-                        .handle_pre_vote_response(from, vote_granted, &self.config);
+                let should_start_election = self.election.handle_pre_vote_response(
+                    from,
+                    vote_granted,
+                    self.config_manager.config(),
+                );
 
                 if should_start_election {
                     self.observer.pre_vote_succeeded(self.id, self.current_term);
@@ -557,7 +524,7 @@ where
                     vote_granted,
                     &self.current_term,
                     &self.role,
-                    &self.config,
+                    self.config_manager.config(),
                 );
 
                 if should_become_leader {
@@ -610,7 +577,7 @@ where
                         match_index,
                         &self.storage,
                         &mut self.state_machine,
-                        &self.config,
+                        self.config_manager.config(),
                     );
                     let new_commit_index = self.replication.commit_index();
                     if new_commit_index > old_commit_index {
@@ -684,68 +651,24 @@ where
         M: MapCollection,
         CCC: ConfigChangeCollection,
     {
-        for (_index, change) in changes.iter() {
-            match change {
-                ConfigurationChange::AddServer(node_id) => {
-                    self.observer
-                        .configuration_change_applied(self.id, *node_id, true);
+        // Check if we need to notify observer about role change (if we removed ourselves)
+        let old_role = self.node_state_to_role();
+        let last_log_index = self.storage.last_log_index();
 
-                    // Add to configuration
-                    let mut new_members = C::new();
-                    for existing_id in self.config.members.iter() {
-                        let _ = new_members.push(existing_id);
-                    }
-                    let _ = new_members.push(*node_id);
-                    self.config = Configuration::new(new_members);
+        self.config_manager.apply_changes(
+            changes,
+            self.id,
+            last_log_index,
+            &mut self.replication,
+            &mut self.observer,
+            &mut self.role,
+        );
 
-                    // Initialize replication state for new member if we're leader
-                    if self.role == NodeState::Leader {
-                        let next_index = self.storage.last_log_index() + 1;
-                        self.replication
-                            .next_index_mut()
-                            .insert(*node_id, next_index);
-                        self.replication.match_index_mut().insert(*node_id, 0);
-                    }
-                }
-                ConfigurationChange::RemoveServer(node_id) => {
-                    self.observer
-                        .configuration_change_applied(self.id, *node_id, false);
-
-                    // Remove from configuration
-                    let mut new_members = C::new();
-                    for existing_id in self.config.members.iter() {
-                        if existing_id != *node_id {
-                            let _ = new_members.push(existing_id);
-                        }
-                    }
-                    self.config = Configuration::new(new_members);
-
-                    // Clean up replication state if we're leader
-                    if self.role == NodeState::Leader {
-                        self.replication.next_index_mut().remove(*node_id);
-                        self.replication.match_index_mut().remove(*node_id);
-                    }
-
-                    // If we removed ourselves, step down
-                    if *node_id == self.id {
-                        let old_role = self.node_state_to_role();
-                        self.role = NodeState::Follower;
-                        self.observer.role_changed(
-                            self.id,
-                            old_role,
-                            Role::Follower,
-                            self.current_term,
-                        );
-                    }
-                }
-            }
-
-            // Clear pending config change flag if this change was committed
-            if let Some(pending_index) = self.pending_config_change {
-                if _index == pending_index {
-                    self.pending_config_change = None;
-                }
-            }
+        // If we stepped down due to self-removal, notify observer
+        let new_role = self.node_state_to_role();
+        if old_role != new_role {
+            self.observer
+                .role_changed(self.id, old_role, new_role, self.current_term);
         }
     }
 
@@ -777,7 +700,7 @@ where
         self.broadcast(vote_request);
 
         // If we have no peers, we already have majority (1 of 1) - become leader immediately
-        if self.config.members.len() == 0 {
+        if self.config_manager.config().members.len() == 0 {
             self.become_leader();
         }
     }
@@ -792,7 +715,7 @@ where
 
         // Initialize replication state
         self.replication
-            .initialize_leader_state(self.config.members.iter(), &self.storage);
+            .initialize_leader_state(self.config_manager.config().members.iter(), &self.storage);
 
         self.election.timer_service_mut().stop_timers();
         self.election.timer_service_mut().reset_heartbeat_timer();
@@ -830,7 +753,7 @@ where
     fn broadcast(&mut self, msg: RaftMsg<P, L, CC>) {
         // Collect peer IDs first to avoid borrowing issues
         let mut ids = C::new();
-        for peer in self.config.members.iter() {
+        for peer in self.config_manager.config().members.iter() {
             ids.push(peer).ok();
         }
 
@@ -848,7 +771,7 @@ where
     fn send_append_entries_to_followers(&mut self) {
         // Collect peer IDs first to avoid borrowing issues
         let mut ids = C::new();
-        for peer in self.config.members.iter() {
+        for peer in self.config_manager.config().members.iter() {
             ids.push(peer).ok();
         }
 

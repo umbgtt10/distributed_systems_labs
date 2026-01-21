@@ -12,7 +12,7 @@ use crate::{
     log_entry_collection::LogEntryCollection,
     log_replication_manager::LogReplicationManager,
     map_collection::MapCollection,
-    message_handler::MessageHandler,
+    message_handler::{MessageHandler, MessageHandlerContext},
     node_collection::NodeCollection,
     node_state::NodeState,
     observer::{Observer, TimerKind as ObserverTimerKind},
@@ -359,12 +359,8 @@ where
         }
     }
 
-    fn handle_message(&mut self, from: NodeId, msg: RaftMsg<P, L, CC>)
-    where
-        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
-        S: Storage<Payload = P, LogEntryCollection = L>,
-    {
-        let mut handler = MessageHandler {
+    fn context(&mut self) -> MessageHandlerContext<'_, T, S, P, SM, C, L, CC, M, TS, O, CCC> {
+        MessageHandlerContext {
             id: &self.id,
             role: &mut self.role,
             current_term: &mut self.current_term,
@@ -376,15 +372,19 @@ where
             replication: &mut self.replication,
             config_manager: &mut self.config_manager,
             snapshot_manager: &mut self.snapshot_manager,
-            _phantom: core::marker::PhantomData::<CCC>,
-        };
-
-        handler.handle_message(from, msg);
+            _phantom: core::marker::PhantomData,
+        }
     }
 
-    // ============================================================
-    // WRAPPER METHODS FOR INTERNAL USE
-    // ============================================================
+    fn handle_message(&mut self, from: NodeId, msg: RaftMsg<P, L, CC>)
+    where
+        SM: StateMachine<Payload = P, SnapshotData = S::SnapshotData>,
+        S: Storage<Payload = P, LogEntryCollection = L>,
+    {
+        let handler = MessageHandler::new();
+        let mut ctx = self.context();
+        handler.handle_message(&mut ctx, from, msg);
+    }
 
     fn apply_config_changes(&mut self, changes: CCC)
     where
@@ -392,92 +392,32 @@ where
         M: MapCollection,
         CCC: ConfigChangeCollection,
     {
-        let mut handler = MessageHandler {
-            id: &self.id,
-            role: &mut self.role,
-            current_term: &mut self.current_term,
-            transport: &mut self.transport,
-            storage: &mut self.storage,
-            state_machine: &mut self.state_machine,
-            observer: &mut self.observer,
-            election: &mut self.election,
-            replication: &mut self.replication,
-            config_manager: &mut self.config_manager,
-            snapshot_manager: &mut self.snapshot_manager,
-            _phantom: core::marker::PhantomData::<CCC>,
-        };
-        handler.apply_config_changes(changes);
+        let handler = MessageHandler::new();
+        let mut ctx = self.context();
+        handler.apply_config_changes(&mut ctx, changes);
     }
 
     fn start_pre_vote(&mut self) {
-        let mut handler = MessageHandler {
-            id: &self.id,
-            role: &mut self.role,
-            current_term: &mut self.current_term,
-            transport: &mut self.transport,
-            storage: &mut self.storage,
-            state_machine: &mut self.state_machine,
-            observer: &mut self.observer,
-            election: &mut self.election,
-            replication: &mut self.replication,
-            config_manager: &mut self.config_manager,
-            snapshot_manager: &mut self.snapshot_manager,
-            _phantom: core::marker::PhantomData::<CCC>,
-        };
-        handler.start_pre_vote();
+        let handler = MessageHandler::new();
+        let mut ctx = self.context();
+        handler.start_pre_vote(&mut ctx);
     }
 
     fn start_election(&mut self) {
-        let mut handler = MessageHandler {
-            id: &self.id,
-            role: &mut self.role,
-            current_term: &mut self.current_term,
-            transport: &mut self.transport,
-            storage: &mut self.storage,
-            state_machine: &mut self.state_machine,
-            observer: &mut self.observer,
-            election: &mut self.election,
-            replication: &mut self.replication,
-            config_manager: &mut self.config_manager,
-            snapshot_manager: &mut self.snapshot_manager,
-            _phantom: core::marker::PhantomData::<CCC>,
-        };
-        handler.start_election();
+        let handler = MessageHandler::new();
+        let mut ctx = self.context();
+        handler.start_election(&mut ctx);
     }
 
     fn send_heartbeats(&mut self) {
-        let mut handler = MessageHandler {
-            id: &self.id,
-            role: &mut self.role,
-            current_term: &mut self.current_term,
-            transport: &mut self.transport,
-            storage: &mut self.storage,
-            state_machine: &mut self.state_machine,
-            observer: &mut self.observer,
-            election: &mut self.election,
-            replication: &mut self.replication,
-            config_manager: &mut self.config_manager,
-            snapshot_manager: &mut self.snapshot_manager,
-            _phantom: core::marker::PhantomData::<CCC>,
-        };
-        handler.send_heartbeats();
+        let handler = MessageHandler::new();
+        let mut ctx = self.context();
+        handler.send_heartbeats(&mut ctx);
     }
 
     fn send_append_entries_to_followers(&mut self) {
-        let mut handler = MessageHandler {
-            id: &self.id,
-            role: &mut self.role,
-            current_term: &mut self.current_term,
-            transport: &mut self.transport,
-            storage: &mut self.storage,
-            state_machine: &mut self.state_machine,
-            observer: &mut self.observer,
-            election: &mut self.election,
-            replication: &mut self.replication,
-            config_manager: &mut self.config_manager,
-            snapshot_manager: &mut self.snapshot_manager,
-            _phantom: core::marker::PhantomData::<CCC>,
-        };
-        handler.send_append_entries_to_followers();
+        let handler = MessageHandler::new();
+        let mut ctx = self.context();
+        handler.send_append_entries_to_followers(&mut ctx);
     }
 }

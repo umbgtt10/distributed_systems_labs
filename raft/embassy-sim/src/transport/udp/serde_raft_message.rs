@@ -7,8 +7,8 @@
 //! Since raft-core's RaftMsg doesn't derive Serialize/Deserialize,
 //! we create a mirror type that can be serialized with postcard.
 
-use crate::embassy_log_collection::EmbassyLogEntryCollection;
-use crate::heapless_chunk_collection::HeaplessChunkVec;
+use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
+use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use alloc::vec::Vec;
 use raft_core::{

@@ -2,8 +2,8 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::embassy_log_collection::EmbassyLogEntryCollection;
-use crate::heapless_chunk_collection::HeaplessChunkVec;
+use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
+use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::vec::Vec;
 use alloc::{string::String, sync::Arc};
 use core::cell::RefCell;

@@ -50,9 +50,6 @@ pub async fn initialize_cluster(
 
 // Channel Raft Wrapper
 #[embassy_executor::task(pool_size = 5)]
-async fn channel_raft_node_task(
-    mut node: EmbassyNode<ChannelTransport>,
-    cancel: CancellationToken,
-) {
+async fn channel_raft_node_task(node: EmbassyNode<ChannelTransport>, cancel: CancellationToken) {
     node.run(cancel).await
 }

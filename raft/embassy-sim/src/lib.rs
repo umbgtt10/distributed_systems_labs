@@ -15,20 +15,17 @@ pub mod logging;
 pub mod cancellation_token;
 pub mod cluster;
 pub mod config;
-pub mod embassy_config_change_collection;
-pub mod embassy_log_collection;
-pub mod embassy_map_collection;
+
+pub mod collections;
 pub mod embassy_node;
-pub mod embassy_node_collection;
 pub mod embassy_observer;
 pub mod embassy_state_machine;
 pub mod embassy_storage;
 pub mod embassy_timer;
 pub mod heap;
-pub mod heapless_chunk_collection;
 pub mod led_state;
 pub mod time_driver;
 pub mod transport;
 
 // Re-export for convenience
-pub use embassy_log_collection::EmbassyLogEntryCollection;
+pub use collections::embassy_log_collection::EmbassyLogEntryCollection;

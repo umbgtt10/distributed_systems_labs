@@ -4,8 +4,8 @@
 
 //! UDP transport using embassy-net (no_std)
 
-use crate::embassy_log_collection::EmbassyLogEntryCollection;
-use crate::heapless_chunk_collection::HeaplessChunkVec;
+use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
+use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use crate::transport::async_transport::AsyncTransport;
 use crate::transport::udp::serde_raft_message::WireRaftMsg;
 use alloc::string::String;

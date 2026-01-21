@@ -4,8 +4,8 @@
 
 //! Async transport trait for different communication backends
 
-use crate::embassy_log_collection::EmbassyLogEntryCollection;
-use crate::heapless_chunk_collection::HeaplessChunkVec;
+use crate::collections::embassy_log_collection::EmbassyLogEntryCollection;
+use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use alloc::string::String;
 use raft_core::raft_messages::RaftMsg;
 use raft_core::types::NodeId;

@@ -2,7 +2,7 @@
 // Licensed under the Apache License, Version 2.0
 // http://www.apache.org/licenses/LICENSE-2.0
 
-use crate::heapless_chunk_collection::HeaplessChunkVec;
+use crate::collections::heapless_chunk_collection::HeaplessChunkVec;
 use raft_core::{
     collections::log_entry_collection::LogEntryCollection,
     observer::{EventLevel, Observer, Role, TimerKind},

@@ -78,9 +78,9 @@ async fn main(spawner: Spawner) {
     info!("All commands processed!");
 
     // Run for additional time to observe replication
-    embassy_time::Timer::after(Duration::from_secs(2)).await;
+    embassy_time::Timer::after(Duration::from_secs(1)).await;
 
-    info!("2 seconds elapsed. Initiating graceful shutdown...");
+    info!("1 seconds elapsed. Initiating graceful shutdown...");
     cluster.shutdown();
 
     // Give tasks time to finish

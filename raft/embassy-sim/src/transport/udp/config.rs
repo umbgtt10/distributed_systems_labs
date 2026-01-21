@@ -45,8 +45,6 @@ pub static mut NODE_RESOURCES: [MaybeUninit<NodeNetworkResources>; 5] = [
     MaybeUninit::uninit(),
 ];
 
-
-
 /// Get resources for a specific node (must be called once per node)
 ///
 /// # Safety

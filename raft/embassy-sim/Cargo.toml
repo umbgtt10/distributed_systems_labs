@@ -7,7 +7,7 @@ edition = "2021"
 raft-core = { path = "../core" }
 
 # Embassy core - Cortex-M with custom time driver
-embassy-executor = { version = "0.9.1", features = ["arch-cortex-m", "executor-thread"] }
+embassy-executor = { version = "0.9.1", features = ["arch-cortex-m", "executor-thread"], default-features = false }
 embassy-time = { version = "0.5", features = ["generic-queue-8", "tick-hz-1_000"] }
 embassy-time-driver = { version = "0.2.1" }
 embassy-sync = "0.7.2"

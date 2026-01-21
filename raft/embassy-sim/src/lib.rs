@@ -26,6 +26,3 @@ pub mod heap;
 pub mod led_state;
 pub mod time_driver;
 pub mod transport;
-
-// Re-export for convenience
-pub use collections::embassy_log_collection::EmbassyLogEntryCollection;
